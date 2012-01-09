@@ -1,0 +1,92 @@
+--------- GENERAL INFORMATION ---------
+
+pyblocksim aims to mitigate the lack of a tool like Simulink (or scicos) in the
+world of python based scientific computing. It aims to enable you to quickly
+implement a model of a dynamic system which is suited to be modeled by the
+feedback-free directed interconnection of blocks such as transfer functions.
+
+pyblocksim provides a framework for:
+* easily describing blocks and their interconnections
+* converting the whole model into a state space form
+* passing it to the numerical integrator of scipy
+* easily accessing the simulation results
+
+pyblocksim does *NOT* provide a graphical user interface. Model description has
+to be done textually.
+
+
+Currently, only little development work has been invested. What already
+works is the following:
+
+* specifying a model consisting of linear proper transfer functions
+  (i.e. degree(num)<= degree(denominator)) and (possibly nonlinear)
+  interconnections of such
+* describing system inputs as python functions
+* simulate (i.e. numerically integrate) the models with the given inputs
+* collecting the simulation results and make them available for e.g.
+  visualization.
+
+
+The following features should be possible to be implemented
+* representation of systems with dead time
+* representation of (linear and nonlinear) systems in state space
+* graphical visualization of the blocks and their interconnections
+  (for visual model checking)
+* things like nyquist and bode plots
+
+* a module for controller/observer design
+
+
+--------- DEPENDENCIES --------- 
+
+Besides the python standard library pyblocksim depends on
+
+* scipy, numpy
+* sympy
+* matplotlib (for visualization only of course)
+
+It seems to be the easiest way to install these packages either by using
+the package manager of your distribution (GNU/Linux) or by installing pythonxy
+[1] (Windows).
+
+[1] http://www.pythonxy.com/
+
+
+--------- WARNING ---------
+
+There is absolutely NO GUARANTEE that the produced results are correct.
+There was only a quick plausibility check for the three examples by the author.
+
+
+--------- INSTALLATION ---------
+
+If all dependencies are installed the examples should run out of the box. For
+importing pyblocksim in your own scripts (outside the pyblocksim dir)
+the package folder (containing the __init__.py file) has to be placed in the
+python-path. A common place would be <PYTHON-LIB-DIR>/site-packages/.
+
+
+--------- DOCUMENTATION ---------
+
+Currently no documentation exists. The examples should be self-explainatory and
+cover the whole functionality. Tanking a glance at the source code should
+reveal the internals (at least if the meaning of the terminology can be
+guessed). In the case of questions asking for support is encouraged.
+
+
+--------- LICENCE ---------
+
+All files are under BSD-licence
+
+
+--------- FEEDBACK ---------
+
+Any feedback (suggestions, bug reports, general critique) is highly welcome.
+The project website can be used for this.
+
+https://github.com/cknoll/pyblocksim
+
+Currently the author does not plan to implement new features as the current
+state seems to fit his needs. However, this plan can change quickly if
+the author needs the new features himself or some user feedback would indicate
+the demand.  
