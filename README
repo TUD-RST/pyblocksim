@@ -36,6 +36,9 @@ The following features should be possible to be implemented
 
 * a module for controller/observer design
 
+HINT:
+    Some of these features (and many others) are available in python-control,
+    see: http://python-control.sourceforge.net/
 
 --------- DEPENDENCIES --------- 
 
