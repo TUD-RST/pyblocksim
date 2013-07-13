@@ -37,6 +37,14 @@ s = sp.Symbol('s')
 t = sp.Symbol('t')
 
 
+
+# The laplace variable
+s = sp.Symbol('s')
+
+# The time variable
+t = sp.Symbol('t')
+
+
 def numbered_symbols(prefix='x', function=sp.Symbol,
                                 start=0, *args, **assumptions):
     """
@@ -54,7 +62,6 @@ def numbered_symbols(prefix='x', function=sp.Symbol,
 
 blockoutputs = numbered_symbols('Y')
 statevariables = numbered_symbols('SV_')
-
 
 
 def _get_assingment_name():
