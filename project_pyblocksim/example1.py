@@ -3,8 +3,6 @@
 from pyblocksim import *
 
 
-ip_syshook(1)
-
 print """
 Example1:
 

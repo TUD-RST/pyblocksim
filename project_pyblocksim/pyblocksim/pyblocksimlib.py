@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 
+
+
 """
 Module for block based modeling and simulation of dynamic systems
 """
@@ -24,18 +26,36 @@ import sympy as sp
 import inspect
 
 
-__version__ = '0.1'
+__version__ = '0.2'
+
+
+
+# The laplace variable
+s = sp.Symbol('s')
+
+# The time variable
+t = sp.Symbol('t')
 
 
 def numbered_symbols(prefix='x', function=sp.Symbol,
                                 start=0, *args, **assumptions):
     """
-    copied from sympy.numbered_symbols and adapted for leading zeros
+    Generate an infinite stream of Symbols consisting of a prefix and
+    increasing subscripts.
+
+    This implementation is copied from sympy.numbered_symbols and
+    adapted for leading zeros
     """
     while True:
         name = '%s%02i' % (prefix, start)
         yield function(name, *args, **assumptions)
         start += 1
+
+
+blockoutputs = numbered_symbols('Y')
+statevariables = numbered_symbols('SV_')
+
+
 
 def _get_assingment_name():
     """
@@ -64,17 +84,6 @@ def degree(expr):
 
 
 
-
-# The laplace variable
-s = sp.Symbol('s')
-blockoutputs = numbered_symbols('Y')
-statevariables = numbered_symbols('SV_')
-
-
-
-
-
-
 class StateAdmin(object):
     """
     Omniscient object for data bookkeeping
@@ -99,6 +108,10 @@ class StateAdmin(object):
         self.blockoutdict = None
         
     def register_block(self, block):
+        """
+        to be done: write text
+        TODO: documentation
+        """
         
         if isinstance(block, IBlock):
             self._register_IBlock(block)
@@ -231,6 +244,8 @@ class StateAdmin(object):
 
         
 def expr2coeffs(expr, lead_test = True):
+    """ returns a list of the coeffs (highest last)
+    """
     
     #coeffs = sp.Poly(expr, s).coeffs # -> only non-zero coeffs
     p = sp.Poly(expr, s, domain="EX")
@@ -611,6 +626,51 @@ def stepfnc(tup, amp1=1, tdown = np.inf, amp0=0):
         return u
     
     return fnc
+
+class Trajectory(object):
+    def __init__(self, expr, smoothness_degree):
+        self.expr = expr
+        self.sd = smoothness_degree
+        self.derivatives = []
+        self._initialize()
+        
+    def _initialize(self):
+        assert isinstance(self.expr, sp.Expr)
+        assert self.expr.atoms(sp.Symbol) == set([t])
+        assert int(self.sd) == self.sd
+
+        for i in range(self.sd+1):
+            self.derivatives.append( self.expr.diff(t, i) )
+
+    def _make_fnc(self, expr, var = None):
+        if var == None:
+            var = t
+        return sp.lambdify( (var,), expr, modules = 'numpy' )
+        
+    def get_trajectory(self, diff_idx=0):
+        assert diff_idx <= self.sd # smoothness_degree
+        fnc = self._make_fnc(self.derivatives[diff_idx])
+        return fnc
+
+    def combined_trajectories(self, expr):
+        """ expects expr to be a polynomial in s which determines
+        how to linearily combine the trajectory
+        and its derivatives to a new function of time
+        
+        Example : expr = s**2 -3*s + 5 means
+
+        return a fuction consisting of y_ddot - 3*y_dot + 5*y
+        
+        """
+
+        coeffs = expr2coeffs(expr, lead_test = False)
+
+        res = 0
+        for i,c in enumerate(coeffs):
+            res+=c*self.derivatives[i]
+
+        return self._make_fnc(res)
+
 
 def main():
     pass
