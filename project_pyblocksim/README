@@ -42,15 +42,18 @@ HINT:
 
 --------- DEPENDENCIES --------- 
 
+Since 2016-11-09 this package uses python3 syntax the python2.7.x code is
+still available in the branch `leagacy-py2`.
+
 Besides the python standard library pyblocksim depends on
 
 * scipy, numpy
 * sympy
-* matplotlib (for visualization only of course)
+* matplotlib (for visualization only)
 
 It seems to be the easiest way to install these packages either by using
 the package manager of your distribution (GNU/Linux) or by installing pythonxy
-[1] (Windows).
+[1] (on Windows).
 
 [1] http://www.pythonxy.com/
 
