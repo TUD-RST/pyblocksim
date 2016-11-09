@@ -7,7 +7,7 @@ Module for block based modeling and simulation of dynamic systems
 """
 
 
-from __future__ import division
+
 
 from numpy.lib.index_tricks import r_
 
@@ -155,10 +155,10 @@ class StateAdmin(object):
     
     def _register_new_states(self, block):        
         # let the block know which indices belong to it
-        block.idcs = range(self.dim, self.dim+block.order)
+        block.idcs = list(range(self.dim, self.dim+block.order))
         self.dim += block.order
         
-        block.stateVars = [statevariables.next() for i in block.idcs]
+        block.stateVars = [next(statevariables) for i in block.idcs]
         self.stateVars += block.stateVars
         
     def _register_new_auxSignal(self):
@@ -208,10 +208,10 @@ class StateAdmin(object):
         assert isinstance(nilblock, NILBlock)
         
         if nilblock.X in self.inputs and len(nilblock.coeffs)>1:
-            raise NotImplementedError, "Input derivative"
+            raise NotImplementedError("Input derivative")
         
         if not nilblock.X in self.IBlocks:
-            raise ValueError, "Invalid input signal of "+ str(nilblock)
+            raise ValueError("Invalid input signal of "+ str(nilblock))
         
         prevblock = self.IBlocks[nilblock.X]
         
@@ -236,7 +236,7 @@ class StateAdmin(object):
         
         # get all inputs of that block which cannot be represented as statevars
         # easily 
-        fnc_symbs = filter(lambda sy: sy in self.Blockfncs, bf.symbs)
+        fnc_symbs = [sy for sy in bf.symbs if sy in self.Blockfncs]
         
         results = {}
         # this could be improved by caching
@@ -265,7 +265,7 @@ def expr2coeffs(expr, lead_test = True):
     c_dict = p.as_dict()
     coeffs = [c_dict.get((i,), 0) for i in range(p.degree()+1)]
     #convert to np array
-    coeffs = np.array(map(float, coeffs))
+    coeffs = np.array(list(map(float, coeffs)))
     
     # check if leading coeff == 1
     if lead_test:
@@ -295,7 +295,7 @@ class IBlock(AbstractBlock):
         """
         AbstractBlock.__init__(self, name)
         self.X = insig
-        self.Y = blockoutputs.next() 
+        self.Y = next(blockoutputs) 
         
         self.coeffs = expr2coeffs(expr)
         self.order = degree(expr)
@@ -319,8 +319,8 @@ class IBlock(AbstractBlock):
             return self.stateadmin.dynEqns[self.idcs[-1]] 
         
         else:
-            raise NotImplementedError, "derivative propagation not yet "\
-                                       "supported"
+            raise NotImplementedError("derivative propagation not yet "\
+                                       "supported")
         
 class TFBlock(AbstractBlock):
     """
@@ -364,7 +364,7 @@ class NILBlock(AbstractBlock):
         expr ... the denominator expr. (a sympy polynomial)
         """
         self.X = insig
-        self.Y = blockoutputs.next() 
+        self.Y = next(blockoutputs) 
         
         AbstractBlock.__init__(self, name)
         
@@ -384,16 +384,16 @@ class Blockfnc(AbstractBlock):
         
         assert not s in atoms, "This is just for static functions"
 
-        symbs = filter(lambda a: not a.is_number, atoms)
+        symbs = [a for a in atoms if not a.is_number]
         self.symbs = symbs
         
         AbstractBlock.__init__(self, name)
         
-        tmpList = theStateAdmin.allBlocks.keys() + theStateAdmin.inputs + \
+        tmpList = list(theStateAdmin.allBlocks.keys()) + theStateAdmin.inputs + \
                     theStateAdmin.stateVars
         assert all([sy in tmpList for sy in symbs])
         
-        self.Y = blockoutputs.next()
+        self.Y = next(blockoutputs)
         
         theStateAdmin.register_block(self) 
         
@@ -409,7 +409,7 @@ def exceptionwrapper(fnc):
     def newfnc(*args, **kwargs):
         try:
             return fnc(*args, **kwargs)
-        except Exception, e:
+        except Exception as e:
             import traceback as tb
             tb.print_exc()
             sys.exit(1)
@@ -427,17 +427,17 @@ def gen_rhs(stateadmin):
     subsdict  = {}
     
     # handle integrating blocks (Yii <- SV_jj)
-    for y, bl in stateadmin.IBlocks.items():
+    for y, bl in list(stateadmin.IBlocks.items()):
         subsdict.update({y : stateadmin.stateVars[bl.idcs[0]]})
         
     # handle NIL Blocks
-    for y, bl in stateadmin.NILBlocks.items():
+    for y, bl in list(stateadmin.NILBlocks.items()):
         eqn_rhs = stateadmin.get_nil_eq(bl) # can still contain Yii -vars
         subsdict.update({y : eqn_rhs})
         
     # handle Blockfncs
     fncs = {}
-    for y, bl in stateadmin.Blockfncs.items():
+    for y, bl in list(stateadmin.Blockfncs.items()):
         new_y = stateadmin.resolve_blockfnc(bl, subsdict)
         fncs[y] = new_y
         
@@ -448,14 +448,14 @@ def gen_rhs(stateadmin):
     finished_expr = {}
     
     L0 = len(subsdict)
-    for y, expr in subsdict.items():
+    for y, expr in list(subsdict.items()):
         if expr.atoms().intersection(Yii) == set():
             finished_expr[y] = expr
             subsdict.pop(y)
 
     while True:
         L = len(subsdict)
-        for y, expr in subsdict.items():
+        for y, expr in list(subsdict.items()):
             expr = expr.subs(finished_expr)
             if expr.atoms().intersection(Yii) == set():
                 finished_expr[y] = expr
@@ -474,7 +474,7 @@ def gen_rhs(stateadmin):
             
     # close the loops    
     loops = {}
-    for u, y in stateadmin.loops.items():
+    for u, y in list(stateadmin.loops.items()):
         new_y = y.subs(subsdict)
         loops[u] = new_y
     
@@ -483,14 +483,14 @@ def gen_rhs(stateadmin):
     # so we ensure that there is at least one integrator in the loop
     L = set(loops).intersection(stateadmin.Blockfncs)
     if not L == set():
-        raise ValueError, 'Algebraic loop found (maybe): '+str(L)
+        raise ValueError('Algebraic loop found (maybe): '+str(L))
     
-    for u, expr in loops.items():
+    for u, expr in list(loops.items()):
         if expr.atoms().intersection(stateadmin.allBlocks) != set():
-            raise ValueError, 'unsubstituted expr found: %s=%s' %(u, expr)
+            raise ValueError('unsubstituted expr found: %s=%s' %(u, expr))
         
     
-    for y, expr in subsdict.items():
+    for y, expr in list(subsdict.items()):
         subsdict[y] = expr.subs(loops)
         
     # we do not need them anymore
@@ -532,13 +532,13 @@ def compute_block_ouptputs(simresults):
     
     blockout_vars = set(theStateAdmin.allBlocks)
     
-    for v in theStateAdmin.blockoutdict.values():
+    for v in list(theStateAdmin.blockoutdict.values()):
         # on the right hand side no Yii should be found
         to_be_empty = v.atoms().intersection(blockout_vars)
         
         assert  to_be_empty == set()
     
-    for bl in theStateAdmin.allBlocks.values():
+    for bl in list(theStateAdmin.allBlocks.values()):
         
         y = bl.Y
         # the fnc for calculationg the blockoutput from states
@@ -576,7 +576,7 @@ def blocksimulation(tend, inputs = None, z0 = None, dt = 5e-3):
                                     not hasattr(inputs[0], '__len__'):
         inputs = dict([inputs])
     else:
-        raise TypeError, "invalid type for input:", str(input)
+        raise TypeError("invalid type for input:").with_traceback(str(input))
     
         
     allinputs = {}

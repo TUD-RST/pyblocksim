@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 
 
-print """
+print("""
 Example2 : linear system consiting of various blocks
 
  (coupled linear transfer functions)
-"""
+""")
 from pyblocksim import *
 
 fb1, fb2, w, z11, z21, z12, z22 = inputs('fb1, fb2, w, z11, z21, z12, z22')

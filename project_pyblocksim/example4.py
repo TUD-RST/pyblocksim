@@ -3,14 +3,14 @@
 from pyblocksim import *
 
 
-print """
+print("""
 Example4:
 
 Flatness based control of a linear plant
 
 (another academic exercise)
 
-"""
+""")
 
 
 

@@ -3,11 +3,11 @@
 from pyblocksim import *
 
 
-print """
+print("""
 Example1:
 
 step response of a first order linear transfer function (PT1)
-"""
+""")
 
 
 u1, = inputs('u1,')

@@ -3,13 +3,13 @@
 from pyblocksim import *
 
 
-print """
+print("""
 Example3:
 
 Simple nonlinear system
 
 mass on a spring with cubic characteristic curve 
-"""
+""")
 
 
 # parameters

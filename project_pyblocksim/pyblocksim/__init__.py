@@ -5,7 +5,7 @@ intermediate module for convenient importing of all needed and useful objects
 """
 
 
-from __future__ import division
+
 
 
 from numpy.lib.index_tricks import r_ as r_
@@ -15,8 +15,8 @@ import scipy as sc
 import sympy as sp
 import pylab as pl
 
-from pyblocksimlib import s, t, TFBlock, Blockfnc, compute_block_ouptputs,\
+from .pyblocksimlib import s, t, TFBlock, Blockfnc, compute_block_ouptputs,\
                         theStateAdmin, blocksimulation, stepfnc, loop,\
                         inputs, Trajectory
 
-import pyblocksimlib as pb
+from . import pyblocksimlib as pb
