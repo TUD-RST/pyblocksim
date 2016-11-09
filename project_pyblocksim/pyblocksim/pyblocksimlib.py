@@ -389,7 +389,8 @@ class Blockfnc(AbstractBlock):
         
         AbstractBlock.__init__(self, name)
         
-        tmpList = theStateAdmin.allBlocks.keys() + theStateAdmin.inputs
+        tmpList = theStateAdmin.allBlocks.keys() + theStateAdmin.inputs + \
+                    theStateAdmin.stateVars
         assert all([sy in tmpList for sy in symbs])
         
         self.Y = blockoutputs.next()
