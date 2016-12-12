@@ -75,7 +75,7 @@ PT1_storage = TFBlock(1/(T_storage*s + 1), LIMITER.Y)
 loop(PT1_storage.Y, fb)
 
 # gain and offset for the output
-Result = Blockfnc(PT1_storage.Y*(y2-y1) + y1)
+Result_block = Blockfnc(PT1_storage.Y*(y2-y1) + y1)
 
 
 def input_ramps(t):
@@ -102,11 +102,19 @@ tt = tt.flatten()
 bo = compute_block_ouptputs(states)
 
 
-pl.plot(tt, [input_ramps(t) for t in tt], label='input')
-pl.plot(tt, bo[Result], label='hyst. output')
+input_signal = [input_ramps(t) for t in tt]
+pl.plot(tt, input_signal, label='input')
+pl.plot(tt, bo[Result_block], label='hyst. output')
+pl.xlabel('time')
 
 pl.grid(1)
 pl.legend()
+
+pl.figure()
+pl.plot(input_signal, bo[Result_block])
+pl.xlabel('input signal')
+pl.ylabel('hysteresis-output')
+
 
 pl.show()
 
