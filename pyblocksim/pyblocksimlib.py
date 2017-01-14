@@ -337,10 +337,11 @@ class IBlock(AbstractBlock):
             raise NotImplementedError("derivative propagation not yet "\
                                        "supported")
 
+
 class TFBlock(AbstractBlock):
     """
     Metablock for representing polynomial transfer functions
-    will be decomposed to numerator (NILBlock) ande denom. (IBlock)
+    will be decomposed to numerator (NILBlock) and denom. (IBlock)
     """
 
     def __init__(self, expr, insig, name = None):
@@ -357,8 +358,8 @@ class TFBlock(AbstractBlock):
         if degree(denom) == 0:
             assert degree(num) == 0
 
-            self.denomBlock = None # ?? maybe a dummy block
-            #self.numBlock = NILBlock(num, insig, name+'_num')
+            self.denomBlock = None
+            # self.numBlock = NILBlock(num, insig, name+'_num')
             self.numBlock = Blockfnc(num * insig)
         else:
             self.denomBlock = IBlock(denom, insig, self.name+'_denom')
@@ -431,7 +432,8 @@ def exceptionwrapper(fnc):
 
     return newfnc
 
-#@ this function is too long
+
+#TODO this function is too long
 def gen_rhs(stateadmin):
     """
     resolves dependencies in the eqns
@@ -439,20 +441,20 @@ def gen_rhs(stateadmin):
     integration algorithm
     """
 
-    subsdict  = {}
+    subsdict = {}
 
     # handle integrating blocks (Yii <- SV_jj)
-    for y, bl in list(stateadmin.IBlocks.items()):
+    for y, bl in stateadmin.IBlocks.items():
         subsdict.update({y : stateadmin.stateVars[bl.idcs[0]]})
 
     # handle NIL Blocks
-    for y, bl in list(stateadmin.NILBlocks.items()):
-        eqn_rhs = stateadmin.get_nil_eq(bl) # can still contain Yii -vars
+    for y, bl in stateadmin.NILBlocks.items():
+        eqn_rhs = stateadmin.get_nil_eq(bl)  # can still contain Yii -vars
         subsdict.update({y : eqn_rhs})
 
     # handle Blockfncs
     fncs = {}
-    for y, bl in list(stateadmin.Blockfncs.items()):
+    for y, bl in stateadmin.Blockfncs.items():
         new_y = stateadmin.resolve_blockfnc(bl, subsdict)
         fncs[y] = new_y
 
@@ -500,12 +502,11 @@ def gen_rhs(stateadmin):
     if not L == set():
         raise ValueError('Algebraic loop found (maybe): '+str(L))
 
-    for u, expr in list(loops.items()):
+    for u, expr in loops.items():
         if expr.atoms().intersection(stateadmin.allBlocks) != set():
             raise ValueError('unsubstituted expr found: %s=%s' %(u, expr))
 
-
-    for y, expr in list(subsdict.items()):
+    for y, expr in subsdict.items():
         subsdict[y] = expr.subs(loops)
 
     # we do not need them anymore
@@ -513,7 +514,6 @@ def gen_rhs(stateadmin):
     # but this cause problems if the gen_rhs is called more than once
 #    for u in loops:
 #        theStateAdmin.inputs.remove(u)
-
 
     # save the relations for later use
     stateadmin.blockoutdict = subsdict
@@ -526,7 +526,6 @@ def gen_rhs(stateadmin):
         eq = eq.subs(subsdict)
         fnc = sp.lambdify(args, eq)
         state_rhs_fncs.append(fnc)
-
 
     # !! TODO: vectorize and time dependence
     def rhs(z, t, *addargs):
@@ -551,7 +550,7 @@ def compute_block_ouptputs(simresults):
         # on the right hand side no Yii should be found
         to_be_empty = v.atoms().intersection(blockout_vars)
 
-        assert  to_be_empty == set()
+        assert to_be_empty == set()
 
     for bl in list(theStateAdmin.allBlocks.values()):
 
@@ -563,12 +562,12 @@ def compute_block_ouptputs(simresults):
         # -> list of N 1d-arrays, N=number(statevars)+number(inputs)
 
         # for each timestep: evaluate the block specific func with the args
-        blocks[bl] = [fnc(*na) for na in zip(*numargs)]
+        blocks[bl] = np.array([fnc(*na) for na in zip(*numargs)])
 
     return blocks
 
 
-def blocksimulation(tend, inputs = None, z0 = None, dt = 5e-3):
+def blocksimulation(tend, inputs=None, z0=None, dt=5e-3):
     """
     z0        state for t = 0
     inputs    a dict (like {u1 : calc_u1, u2 : calc_u2} where calc_u1, ...
