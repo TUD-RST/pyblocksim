@@ -1,4 +1,6 @@
 *.pyc
 *.pyw
 doc/_*/*
+.idea/*
+
 
