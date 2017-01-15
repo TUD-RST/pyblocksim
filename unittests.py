@@ -22,6 +22,7 @@ test_examples = {1: 'example1',
                  3: 'example3',
                  4: 'example4',
                  5: 'example-hysteresis',
+                 6: 'example06-output-derivative',
                  }
 
 
@@ -128,6 +129,9 @@ class TestExamples(unittest.TestCase):
 
     def test_example_hyst(self):
         self.specific_example_test(5)
+
+    def test_example_output_deriv(self):
+        self.specific_example_test(6)
 
 
 if __name__ == '__main__':

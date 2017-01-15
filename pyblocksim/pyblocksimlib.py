@@ -340,7 +340,7 @@ class IBlock(AbstractBlock):
         # placeholder:
         self.idcs = None
         self.stateVars = None
-        self.stateadmin = None # ugly and awkward
+        self.stateadmin = None  # ugly and awkward
 
         theStateAdmin.register_block(self)
 
@@ -355,7 +355,7 @@ class IBlock(AbstractBlock):
             return self.stateadmin.dynEqns[self.idcs[-1]]
 
         else:
-            raise NotImplementedError("derivative propagation not yet "\
+            raise NotImplementedError("derivative propagation not yet " \
                                        "supported")
 
 
@@ -365,18 +365,22 @@ class TFBlock(AbstractBlock):
     will be decomposed to numerator (NILBlock) and denom. (IBlock)
     """
 
-    def __init__(self, expr, insig, name = None):
+    def __init__(self, expr, insig, name= None):
 
         AbstractBlock.__init__(self, name)
 
         num, denom = expr.as_numer_denom()
 
-        highest_coeff = expr2coeffs(denom, lead_test = False)[-1]
+        highest_denom_coeff = expr2coeffs(denom, lead_test=False)[-1]
 
-        num/= highest_coeff
-        denom/= highest_coeff
+        num /= highest_denom_coeff
+        denom /= highest_denom_coeff
 
-        if degree(denom) == 0:
+        self.denom_degree = degree(denom)
+        self.relative_degree = degree(denom) - degree(num)
+        self.num = num
+
+        if self.denom_degree == 0:
             assert degree(num) == 0
 
             self.denomBlock = None
@@ -388,8 +392,38 @@ class TFBlock(AbstractBlock):
 
         self.X = insig
         self.Y = self.numBlock.Y
+        self.output_deriv_cache = {}
 
         theStateAdmin.register_block(self)
+
+    def get_output_deriv(self, order):
+        """
+        Creates an additional numerator (-> NILBlock) for the TF which serves to
+        calculate derivatives of the actual output
+
+        :param order: derivative order; must be smaller than relative degree
+
+        :return: output variable of the new NILBlock
+        """
+
+        assert int(order) == order
+        if order > self.relative_degree:
+            msg = "Output derivative order must not be greater " \
+                  "than relative degree."
+            raise ValueError(msg)
+
+        if order == 0:
+            return self.Y
+
+        if self.output_deriv_cache.get(order) is not None:
+            return self.output_deriv_cache.get(order)
+
+        # Now we have to create a new NILBlock for the new numerator
+
+        block_name = self.name+'_num_d' + str(order)
+        new_numerator = NILBlock(self.num*s**order, self.denomBlock.Y, block_name)
+        self.output_deriv_cache[order] = new_numerator
+        return new_numerator.Y
 
 
 class NILBlock(AbstractBlock):
@@ -596,7 +630,7 @@ def blocksimulation(tend, inputs=None, z0=None, dt=5e-3):
               (in the case of just one specified input (u1, calc_u1) is allowed
     """
 
-    if z0 == None:
+    if z0 is None:
         z0 = [0]*theStateAdmin.dim
 
     assert len(z0) == theStateAdmin.dim
@@ -605,14 +639,16 @@ def blocksimulation(tend, inputs=None, z0=None, dt=5e-3):
 
     if isinstance(inputs, dict):
         pass
-    elif inputs == None:
+    elif inputs is None:
         inputs = {}
+
+    # shortcut for 2-tuple of the form (u1, u1fnc)
     elif hasattr(inputs, '__len__') and len(inputs) == 2 and\
                                     not hasattr(inputs[0], '__len__'):
         inputs = dict([inputs])
     else:
-        raise TypeError("invalid type for input:").with_traceback(str(input))
-
+        msg = "invalid type for input: " + str(input)
+        raise TypeError(msg)
 
     allinputs = {}
     for i in theStateAdmin.inputs:
