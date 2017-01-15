@@ -7,8 +7,9 @@ import pickle
 import os
 import numpy as np
 import pyblocksim as pbs
+import inspect
 
-from ipHelp import IPS
+# from ipHelp import IPS
 
 
 """
@@ -74,6 +75,46 @@ class TestInternals(unittest.TestCase):
 
     def tearDown(self):
         pass
+
+    # comment this during debugging
+    @unittest.expectedFailure
+    def test_debug_code_absent(self):
+        """
+        test whether there is some call to interactive IPython (leagacy from debugging)
+        or some related import
+        """
+
+        # first load all relevant source files as list of lines in a dict
+        srclines = {"core": inspect.getsourcelines(pbs.core)[0]}
+        for _, example_name in test_examples.items():
+            with open(example_name + ".py", 'r') as srcfile:
+                src = srcfile.readlines()
+            srclines[example_name] = src
+
+        unittestfilename = inspect.getsourcefile(type(self))
+        with open(unittestfilename, 'r') as srcfile:
+            src = srcfile.readlines()
+        srclines['unittest'] = src
+
+        # now determine whether the lines are OK
+        def filter_func(tup):
+            idx, line = tup
+            if line.strip().startswith('#'):
+                return False
+            str1 = 'I P S ()'.replace(' ', "")
+            str2 = 'i p H e l p'.replace(' ', "")
+            if str1 in line or str2 in line:
+                return True
+
+            return False
+
+        for key, src in srclines.items():
+            res = list(filter(filter_func, enumerate(src, 1)))
+
+            # if there are any results, they are 2-tuples
+            # we want to add information about the file (for good error msg)
+            res = [(key, idx, line) for idx, line in res]
+            self.assertEqual(res, [])
 
     def test_blocknames(self):
 

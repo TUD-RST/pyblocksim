@@ -15,8 +15,7 @@ import scipy as sc
 import sympy as sp
 import pylab as pl
 
-from .pyblocksimlib import s, t, TFBlock, Blockfnc, compute_block_ouptputs,\
+from .core import s, t, TFBlock, Blockfnc, compute_block_ouptputs,\
                         theStateAdmin, blocksimulation, stepfnc, loop,\
                         inputs, Trajectory, mainprint, sys, restart, warnings
 
-from . import pyblocksimlib as pbs
