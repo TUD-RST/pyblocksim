@@ -27,7 +27,8 @@ test_examples = {1: 'example1',
 
 
 def get_fname(name):
-    return os.path.join("testdata", name + ".pcl")
+    py_version_str = "py{}".format(sys.version_info.major)
+    return os.path.join("testdata", py_version_str, name + ".pcl")
 
 
 def generate_data(example_name):
@@ -109,7 +110,7 @@ class TestExamples(unittest.TestCase):
         bo_ref = convert_dict_key_to_str(bo_ref)
         mod.bo = convert_dict_key_to_str(mod.bo)
 
-        self.assertEquals(set(mod.bo.keys()), set(bo_ref.keys()))
+        self.assertEqual(set(mod.bo.keys()), set(bo_ref.keys()))
         for k in mod.bo.keys():
             arr = mod.bo[k]
             arr_ref = bo_ref[k]

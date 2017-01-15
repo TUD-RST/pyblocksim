@@ -1,0 +1,2 @@
+This file serves to let git track the directory it is contained in.
+The directory is needed for auxiliary data for unittests.
