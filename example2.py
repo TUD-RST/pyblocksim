@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 
+from pyblocksim import *
 
-print("""
+mainprint("""
 Example2 : linear system consiting of various blocks
 
  (coupled linear transfer functions)
 """)
-from pyblocksim import *
 
 fb1, fb2, w, z11, z21, z12, z22 = inputs('fb1, fb2, w, z11, z21, z12, z22')
 
@@ -18,7 +18,7 @@ KR2 = 0.57
 TN2 = 1.29
 
 ### Plant
-T1 = 1.0 
+T1 = 1.0
 
 # equilibrium pojnt 1
 K1, K2, K3, K4 = 0.4, 1.2, -0.8, -0.2
@@ -59,9 +59,10 @@ t, states = blocksimulation(40, (w, thestep), dt=.05)
 
 bo = compute_block_ouptputs(states)
 
-pl.plot(t, bo[SUM1])
-pl.plot(t, bo[P22])
-pl.plot(t, bo[P11])
-pl.grid()
-pl.show()
+if __name__ == "__main__":
+    pl.plot(t, bo[SUM1])
+    pl.plot(t, bo[P22])
+    pl.plot(t, bo[P11])
+    pl.grid()
+    pl.show()
 

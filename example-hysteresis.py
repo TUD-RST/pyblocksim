@@ -1,13 +1,10 @@
 # -*- coding: utf-8 -*-
 
 from pyblocksim import *
-#import numpy as np
 
-
-print("""
+mainprint("""
 Approximation of a simple hysteresis system
 """)
-
 
 # switching tresholds for hysteresis
 x1 = 4  # switching down
@@ -29,17 +26,17 @@ def step_factory(y0, y1, x_step):
     Factory to create continously approximated step functions
     """
     #tanh maps R to (-1, 1)
-    
+
     # first map R to (0, 1)
     # then map (0, 1) -> (y0, y1)
-    
+
     dy = y1-y0
-    
+
     def fnc(x, module=sp):
      return (module.tanh(_tanh_factor*(x-x_step))+1 )/2*dy + y0
- 
+
     fnc.__doc__ = "approximated step function %f, %f, %f" % (y0, y1, x_step)
- 
+
     return fnc
 
 
@@ -79,12 +76,12 @@ Result_block = Blockfnc(PT1_storage.Y*(y2-y1) + y1)
 
 
 def input_ramps(t):
-    
+
     T1 = 10
     T2 = 20
     k1 = 1
     k2 = 1
-    
+
     if t < 0:
         return 0
     elif t < T1:
@@ -93,8 +90,7 @@ def input_ramps(t):
         return k1*T1 - k2*(t-T1)
     else:
         return 0
-    
-    
+
 
 tt, states = blocksimulation(25, {hyst_in: input_ramps}) # simulate
 tt = tt.flatten()
@@ -103,19 +99,20 @@ bo = compute_block_ouptputs(states)
 
 
 input_signal = [input_ramps(t) for t in tt]
-pl.plot(tt, input_signal, label='input')
-pl.plot(tt, bo[Result_block], label='hyst. output')
-pl.xlabel('time')
 
-pl.grid(1)
-pl.legend()
+if __name__ == "__main__":
+    pl.plot(tt, input_signal, label='input')
+    pl.plot(tt, bo[Result_block], label='hyst. output')
+    pl.xlabel('time')
 
-pl.figure()
-pl.plot(input_signal, bo[Result_block])
-pl.xlabel('input signal')
-pl.ylabel('hysteresis-output')
+    pl.grid(1)
+    pl.legend()
 
+    pl.figure()
+    pl.plot(input_signal, bo[Result_block])
+    pl.xlabel('input signal')
+    pl.ylabel('hysteresis-output')
 
-pl.show()
+    pl.show()
 
 quit()

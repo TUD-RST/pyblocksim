@@ -3,12 +3,12 @@
 from pyblocksim import *
 
 
-print("""
+mainprint("""
 Example3:
 
 Simple nonlinear system
 
-mass on a spring with cubic characteristic curve 
+mass on a spring with cubic characteristic curve
 """)
 
 
@@ -32,7 +32,8 @@ bo = compute_block_ouptputs(states)
 
 # an undamped nonlinear oscillation takes place:
 
-pl.plot(t, bo[DI])
-pl.grid()
-pl.show()
+if __name__ == "__main__":
+    pl.plot(t, bo[DI])
+    pl.grid()
+    pl.show()
 

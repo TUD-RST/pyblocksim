@@ -1,41 +1,44 @@
 # -*- coding: utf-8 -*-
 
-
-
 """
 Module for block based modeling and simulation of dynamic systems
 """
 
 
-
-
+from __future__ import print_function
 from numpy.lib.index_tricks import r_
 
 import numpy as np
-import scipy as sc
 import scipy.integrate as integrate
-
-import pylab as pl
-
 
 import sys
 import sympy as sp
 
-
-
 import inspect
+import warnings
+
+# from ipHelp import IPS # for debugging
 
 
-__version__ = '0.2'
+__version__ = '0.2.1dev'
 
 
+def mainprint(*args, **kwargs):
+    """
+    This function wraps pythons print function such that it is
+    only executed if the calling module is the main module.
 
-# The laplace variable
-s = sp.Symbol('s')
+    This is relevant to the examples which are imported as modules in the
+    unittest script where we dont want all the output which is generated,
+    by the actual example
+    """
 
-# The time variable
-t = sp.Symbol('t')
+    frame_up = inspect.currentframe().f_back
+    module_name = frame_up.f_globals['__name__']
+    # print("name:", __name__, module_name)
 
+    if module_name == '__main__':
+        print(*args, **kwargs)
 
 
 # The laplace variable
@@ -86,9 +89,9 @@ def _get_assingment_name():
         name = src.split("=")[0].strip()
         return name
 
+
 def degree(expr):
     return sp.Poly(expr,s, domain='EX').degree()
-
 
 
 class StateAdmin(object):
@@ -99,8 +102,8 @@ class StateAdmin(object):
         self.dim = 0
         self.auxdim = 0
 
-        self.dynEqns = [] # list for storing the rhs of state eqns
-        self.auxEqns = [] # list for the auxillary eqns
+        self.dynEqns = []  # list for storing the rhs of state eqns
+        self.auxEqns = []  # list for the auxillary eqns
         self.stateVars = []
         self.inputs = []
 
@@ -109,6 +112,7 @@ class StateAdmin(object):
         self.Blockfncs = {}
 
         self.allBlocks = {}
+        self.allBlockNames = {}
         self.metaBlocks = {}
         self.loops = {}
 
@@ -116,9 +120,9 @@ class StateAdmin(object):
 
     def register_block(self, block):
         """
-        to be done: write text
-        TODO: documentation
+        Method for central bookkeeping of all blocks
         """
+        # TODO: this should be refactored to happen inside the block-Classes
 
         if isinstance(block, IBlock):
             self._register_IBlock(block)
@@ -129,11 +133,12 @@ class StateAdmin(object):
         elif isinstance(block, TFBlock):
             self._register_TFBlock(block)
         else:
-            raise TypeError
+            raise TypeError()
 
     def _register_IBlock(self, block):
         self.IBlocks[block.Y] = block
         self.allBlocks[block.Y] = block
+        self.allBlockNames[block.name] = block
 
         block.stateadmin = self
         self._register_new_states(block)
@@ -142,15 +147,18 @@ class StateAdmin(object):
     def _register_NILBlock(self, block):
         self.NILBlocks[block.Y] = block
         self.allBlocks[block.Y] = block
+        self.allBlockNames[block.name] = block
 
     def _register_Blockfnc(self, block):
         self.allBlocks[block.Y] = block
+        self.allBlockNames[block.name] = block
         self.Blockfncs[block.Y] = block
 
     def _register_TFBlock(self, block):
         # prevent the meta block from overwriting the numerator Block
         Y = sp.Symbol(block.Y.name+'meta')
         self.allBlocks[Y] = block
+        self.allBlockNames[block.name] = block
         self.metaBlocks[block.Y] = block
 
     def _register_new_states(self, block):
@@ -216,7 +224,7 @@ class StateAdmin(object):
 
         prevblock = self.IBlocks[nilblock.X]
 
-        #n = len(nilblock.coeffs)-1
+        # n = len(nilblock.coeffs)-1
 
         # coeffs are sorted like this: [a_0, ..., a_n]
         tmplist = [c*prevblock.requestDeriv(i)
@@ -249,23 +257,23 @@ class StateAdmin(object):
         new_subs_dict = subsdict.copy()
         new_subs_dict.update(results)
         return bf.expr.subs(new_subs_dict)
+# End of class StateAdmin
 
 
 def expr2coeffs(expr, lead_test = True):
     """ returns a list of the coeffs (highest last)
     """
 
-    #coeffs = sp.Poly(expr, s).coeffs # -> only non-zero coeffs
+    # coeffs = sp.Poly(expr, s).coeffs # -> only non-zero coeffs
     p = sp.Poly(expr, s, domain="EX")
 
     # !! this should be done with .all_coeffs() if its available
     # then we probably must reverse the array because highest coeff will be 1st
     # -> coeffs = np.array(map(float, coeffs))[::-1]
 
-
     c_dict = p.as_dict()
     coeffs = [c_dict.get((i,), 0) for i in range(p.degree()+1)]
-    #convert to np array
+    # convert to np array
     coeffs = np.array(list(map(float, coeffs)))
 
     # check if leading coeff == 1
@@ -277,10 +285,23 @@ def expr2coeffs(expr, lead_test = True):
 class AbstractBlock(object):
 
     def __init__(self, name):
-        if name == None:
-            self.name = _get_assingment_name()
+        if name is None:
+            name_candidate = _get_assingment_name()
         else:
-            self.name = name
+            if not isinstance(name, str):
+                raise TypeError("invalid block name")
+            name_candidate = name
+            if name_candidate in theStateAdmin.allBlockNames:
+                msg = "Warning: explicitly given block name '{0}' already exists. "\
+                      "It will be renamed."
+                warnings.warn(msg.format(name))
+
+        tmp_name = name_candidate
+        i = 1
+        while tmp_name in theStateAdmin.allBlockNames:
+            tmp_name = name_candidate + "_" + str(i)
+
+        self.name = tmp_name
 
     def __repr__(self):
         return type(self).__name__+':'+self.name
@@ -649,6 +670,7 @@ def stepfnc(tup, amp1=1, tdown = np.inf, amp0=0):
 
     return fnc
 
+
 class Trajectory(object):
     def __init__(self, expr, smoothness_degree):
         self.expr = expr
@@ -664,13 +686,13 @@ class Trajectory(object):
         for i in range(self.sd+1):
             self.derivatives.append( self.expr.diff(t, i) )
 
-    def _make_fnc(self, expr, var = None):
-        if var == None:
+    def _make_fnc(self, expr, var=None):
+        if var is None:
             var = t
-        return sp.lambdify( (var,), expr, modules = 'numpy' )
+        return sp.lambdify( (var,), expr, modules='numpy' )
 
     def get_trajectory(self, diff_idx=0):
-        assert diff_idx <= self.sd # smoothness_degree
+        assert diff_idx <= self.sd  # smoothness_degree
         fnc = self._make_fnc(self.derivatives[diff_idx])
         return fnc
 
@@ -685,28 +707,30 @@ class Trajectory(object):
 
         """
 
-        coeffs = expr2coeffs(expr, lead_test = False)
+        coeffs = expr2coeffs(expr, lead_test=False)
 
         res = 0
-        for i,c in enumerate(coeffs):
-            res+=c*self.derivatives[i]
+        for i, c in enumerate(coeffs):
+            res += c*self.derivatives[i]
 
         return self._make_fnc(res)
 
 
 def main():
-    pass
-    # maybe call an example here?
+    print("This module is not meant to be executed as main module.")
+    print("See examples")
 
 
+def restart():
+    """
+    Forget about all blocks and states. This is useful for unittests
+    """
+    theStateAdmin.__init__()
 
+# global variables
 theStateAdmin = StateAdmin()
-
-# shortcuts
 loop = theStateAdmin.register_loop
 inputs = theStateAdmin.register_inputs
-
-
 
 
 if __name__ == '__main__':
