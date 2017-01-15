@@ -29,18 +29,20 @@ def get_fname(name):
     return os.path.join("testdata", name + ".pcl")
 
 
-def generate_data():
+def generate_data(example_name):
     """
-    run all examples and save the results such that it can be compared to
-    them later on.
+    run an example and save the results such that it can be compared to
+    later on.
     """
-    for k, v in test_examples.items():
-        mod = importlib.import_module(v)
 
-        fname = get_fname(v)
-        with open(fname, "wb") as pfile:
-            pickle.dump(mod.bo, pfile)
-        print(fname, " written.")
+    # delete all existing blocks
+    pbs.restart()
+    mod = importlib.import_module(example_name)
+
+    fname = get_fname(example_name)
+    with open(fname, "wb") as pfile:
+        pickle.dump(mod.bo, pfile)
+    print(fname, " written.")
 
 
 def load_data(key):
@@ -93,6 +95,7 @@ class TestInternals(unittest.TestCase):
 class TestExamples(unittest.TestCase):
 
     def setUp(self):
+        pbs.restart()
         pass
 
     def tearDown(self):
@@ -104,9 +107,8 @@ class TestExamples(unittest.TestCase):
 
         bo_ref = convert_dict_key_to_str(bo_ref)
         mod.bo = convert_dict_key_to_str(mod.bo)
-        IPS()
 
-        self.assertEquals(mod.bo.keys(), bo_ref.keys())
+        self.assertEquals(set(mod.bo.keys()), set(bo_ref.keys()))
         for k in mod.bo.keys():
             arr = mod.bo[k]
             arr_ref = bo_ref[k]
@@ -131,7 +133,8 @@ class TestExamples(unittest.TestCase):
 if __name__ == '__main__':
 
     if 'generate_data' in sys.argv:
-        generate_data()
+        for k, v in test_examples.items():
+            generate_data(v)
     else:
         unittest.main()
 

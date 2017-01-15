@@ -114,5 +114,3 @@ if __name__ == "__main__":
     pl.ylabel('hysteresis-output')
 
     pl.show()
-
-quit()
