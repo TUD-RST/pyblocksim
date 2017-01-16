@@ -6,6 +6,8 @@ Module for block based modeling and simulation of dynamic systems
 
 
 from __future__ import print_function
+from six import string_types  # py2 and 3 compatibility
+
 from numpy.lib.index_tricks import r_
 
 import numpy as np
@@ -288,7 +290,7 @@ class AbstractBlock(object):
         if name is None:
             name_candidate = _get_assingment_name()
         else:
-            if not isinstance(name, str):
+            if not isinstance(name, string_types):
                 raise TypeError("invalid block name")
             name_candidate = name
             if name_candidate in theStateAdmin.allBlockNames:

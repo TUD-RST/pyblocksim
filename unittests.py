@@ -76,8 +76,8 @@ class TestInternals(unittest.TestCase):
     def tearDown(self):
         pass
 
-    # comment this during debugging
-    @unittest.expectedFailure
+    # uncomment this during debugging
+    #@unittest.expectedFailure
     def test_debug_code_absent(self):
         """
         test whether there is some call to interactive IPython (leagacy from debugging)
@@ -120,6 +120,8 @@ class TestInternals(unittest.TestCase):
 
         u1, u2 = pbs.inputs("u1, u2")
         myblock = pbs.Blockfnc(3*u1)
+        s = pbs.s
+        blk2 = pbs.TFBlock((4*s + 2)/((s + 1)*(s + 2)), u1, name=u"äöü")
 
         tmp_block = myblock
         # this should generate a new name
