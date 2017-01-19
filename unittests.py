@@ -146,6 +146,12 @@ class TestInternals(unittest.TestCase):
         self.assertEqual(mod.t[0], 0)
         self.assertEqual(dt1, dt2)
 
+    def test_block_output_dimension(self):
+        # ensure that blockoutput is scalar
+        mod = importlib.import_module(test_examples[1])
+
+        self.assertEquals(len(list(mod.bo.values())[0].shape), 1)
+
 
 class TestExamples(unittest.TestCase):
 
