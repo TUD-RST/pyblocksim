@@ -136,6 +136,16 @@ class TestInternals(unittest.TestCase):
         self.assertEqual(len(cm), 1)
         self.assertTrue('block1' in str(cm[0].message))
 
+    def test_t00_bug(self):
+        # bug: blocksimulation returns time array like r_[0, 0, dt, 2*dt, ...]
+        # the doubl eoccurance of 0 is the problem
+        mod = importlib.import_module(test_examples[1])
+
+        dt1 = mod.t[1] - mod.t[0]
+        dt2 = mod.t[2] - mod.t[1]
+        self.assertEqual(mod.t[0], 0)
+        self.assertEqual(dt1, dt2)
+
 
 class TestExamples(unittest.TestCase):
 

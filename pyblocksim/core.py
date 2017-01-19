@@ -672,17 +672,21 @@ def blocksimulation(tend, inputs=None, z0=None, dt=5e-3):
 
     while True:
         u_tup = tuple([fnc(t) for fnc in inputfncs])
-        z=integrate.odeint(rhs, z, r_[t,t+dt], u_tup)
+        z = integrate.odeint(rhs, z, r_[t,t+dt], u_tup)
         z = z[-1, :]
         stateresults = np.vstack((stateresults, r_[z, u_tup]))
         tvect = np.vstack((tvect, r_[t]))
 
-        t+=dt
+        t += dt
 
         if t >= tend:
             break
 
-    # !! we have two lines with t = 0 in the result
+    # avoid to have two lines with t = 0 in the result
+    tvect = tvect.squeeze()[1:]
+
+    # to keep the lengths in sync we drop the last result value
+    stateresults = stateresults[:-1, :]
     return tvect, stateresults
 
 
