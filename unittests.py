@@ -146,6 +146,27 @@ class TestInternals(unittest.TestCase):
         self.assertEqual(mod.t[0], 0)
         self.assertEqual(dt1, dt2)
 
+    def test_t00_bug2(self):
+        # inputsignal should be evaluated correctly
+
+        u1, = pbs.inputs('u1')  # external force and feedback
+        meas1 = pbs.Blockfnc(u1)
+        PT1 = pbs.TFBlock(1/(1 + pbs.s), u1)  #
+
+        def u1fnc(t):
+            if t == 0:
+                return 0
+            else:
+                return 1
+
+        t, states = pbs.blocksimulation(1, (u1, u1fnc))  # simulate 10 seconds
+
+        bo = pbs.compute_block_ouptputs(states)
+        uu1 = bo[meas1]
+        self.assertEqual(uu1[0], 0)
+        self.assertEqual(uu1[1], 1)
+        self.assertEqual(uu1[2], 1)
+
     def test_block_output_dimension(self):
         # ensure that blockoutput is scalar
         mod = importlib.import_module(test_examples[1])
