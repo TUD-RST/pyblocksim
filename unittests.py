@@ -77,7 +77,7 @@ class TestInternals(unittest.TestCase):
         pass
 
     # uncomment this during debugging
-    #@unittest.expectedFailure
+    # @unittest.expectedFailure
     def test_debug_code_absent(self):
         """
         test whether there is some call to interactive IPython (leagacy from debugging)
@@ -171,7 +171,7 @@ class TestInternals(unittest.TestCase):
         # ensure that blockoutput is scalar
         mod = importlib.import_module(test_examples[1])
 
-        self.assertEquals(len(list(mod.bo.values())[0].shape), 1)
+        self.assertEqual(len(list(mod.bo.values())[0].shape), 1)
 
 
 class TestExamples(unittest.TestCase):

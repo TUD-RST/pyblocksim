@@ -662,31 +662,33 @@ def blocksimulation(tend, inputs=None, z0=None, dt=5e-3):
     t = 0
     z = z0
 
-    u0_vect = np.array([fnc(0) for fnc in inputfncs])
+    # input vector
+    u_vect = np.array([fnc(0) for fnc in inputfncs])
 
-    stateresults = r_[z0, u0_vect]
-    tvect = r_[t]
+    # create an empty array to which the results will by added
+    stateresults = np.array([]).reshape(0, len(z) + len(u_vect))
+
+    tvect = np.array([])
 
     # generating the model from the blocks
     rhs = gen_rhs(theStateAdmin)
 
     while True:
-        u_tup = tuple([fnc(t) for fnc in inputfncs])
-        z = integrate.odeint(rhs, z, r_[t,t+dt], u_tup)
-        z = z[-1, :]
-        stateresults = np.vstack((stateresults, r_[z, u_tup]))
-        tvect = np.vstack((tvect, r_[t]))
-
-        t += dt
+        # save the current values
+        stateresults = np.vstack((stateresults, r_[z, u_vect]))
+        tvect = np.hstack((tvect, t))
 
         if t >= tend:
             break
 
-    # avoid to have two lines with t = 0 in the result
-    tvect = tvect.squeeze()[1:]
+        # calculate the next values
+        z = integrate.odeint(rhs, z, r_[t, t+dt], tuple(u_vect))
+        z = z[-1, :]
 
-    # to keep the lengths in sync we drop the last result value
-    stateresults = stateresults[:-1, :]
+        t += dt
+        u_vect = [fnc(t) for fnc in inputfncs]
+
+    tvect = tvect
     return tvect, stateresults
 
 
