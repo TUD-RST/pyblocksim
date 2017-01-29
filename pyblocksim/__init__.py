@@ -17,5 +17,6 @@ import pylab as pl
 
 from .core import s, t, TFBlock, Blockfnc, compute_block_ouptputs,\
                         theStateAdmin, blocksimulation, stepfnc, loop,\
-                        inputs, Trajectory, mainprint, sys, restart, warnings
+                        inputs, Trajectory, mainprint, sys, restart, warnings,\
+                        RingBuffer
 

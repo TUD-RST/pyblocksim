@@ -173,6 +173,28 @@ class TestInternals(unittest.TestCase):
 
         self.assertEqual(len(list(mod.bo.values())[0].shape), 1)
 
+    def test_ringbuffer(self):
+
+        bufferlength = 7
+        rb = pbs.RingBuffer(bufferlength)
+        N = 50
+        arr_in = np.zeros(N)
+        arr_out = np.zeros(N)
+        ii = np.arange(N)
+        for i in ii:
+            x = i**2 + 500
+            arr_in[i] = x
+            arr_out[i] = rb.read()
+            rb.write(x)
+
+        if 0:
+            import matplotlib.pyplot as plt
+            plt.plot(ii, arr_in)
+            plt.plot(ii, arr_out)
+            plt.show()
+
+        self.assertTrue(np.allclose(arr_in[:-bufferlength], arr_out[bufferlength:]))
+
 
 class TestExamples(unittest.TestCase):
 

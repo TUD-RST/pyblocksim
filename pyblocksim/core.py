@@ -473,6 +473,37 @@ class Blockfnc(AbstractBlock):
         self.expr = expr
 
 
+class DelayBlock(AbstractBlock):
+    pass
+
+
+class RingBuffer(object):
+    """
+    data structure for saving the internal state of a delay block
+    """
+
+    def __init__(self, length):
+        self._storrage = np.zeros(length)
+        self._length = length
+        self._idx = 0
+        self._flag_read = False
+
+    def read(self):
+        assert not self._flag_read
+        self._flag_read = True
+        return self._storrage[self._idx]
+
+    def write(self, value):
+        assert np.allclose(np.float64(value), value)
+
+        # ensure we already read the value
+        assert self._flag_read
+
+        self._storrage[self._idx] = value
+        self._idx = (self._idx + 1) % self._length
+        self._flag_read = False
+
+
 def exceptionwrapper(fnc):
     """
     prevent the integration algorithm to get stuck if
