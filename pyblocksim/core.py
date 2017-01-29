@@ -503,8 +503,10 @@ class DelayBlock(AbstractBlock):
         AbstractBlock.__init__(self, name)
         self.T = T
 
+        self.X = insig
         self.Y = next(blockoutputs)
 
+        self.input_value_fnc = None
         # this will be the ringbuffer
         self.rb = None
 
@@ -525,8 +527,8 @@ class DelayBlock(AbstractBlock):
     def read(self):
         return self.rb.read()
 
-    def write_and_step(self, *args, **kwargs):
-        return self.rb.write_and_step(*args, **kwargs)
+    def write_input_and_step(self, input_value):
+        return self.rb.write_and_step(input_value)
 
 
 class RingBuffer(object):
@@ -746,6 +748,9 @@ def blocksimulation(tend, inputs=None, z0=None, dt=5e-3):
     allinputs.update(inputs)
     inputfncs = [allinputs[i] for i in theStateAdmin.inputs]
 
+    # generating the model from the blocks
+    rhs = gen_rhs(theStateAdmin)
+
     t = 0
     z = z0
 
@@ -755,6 +760,23 @@ def blocksimulation(tend, inputs=None, z0=None, dt=5e-3):
     # vector of delay block outputs:
     theStateAdmin.setup_DelayBlocks(dt)
     delayblocks = theStateAdmin.DelayBlocks.values()
+
+    # TODO: this should be a separat function
+    # the input of a deayblock is a) an system input
+    # or b) an other blockoutput
+
+    # will be a list of tuples:
+    potential_rhs_exprns = list(theStateAdmin.blockoutdict.items())
+    # add trivial equations for the input (like u1 = u1)
+    tuple_list = zip(theStateAdmin.inputs, theStateAdmin.inputs)
+    potential_rhs_exprns.extend(tuple_list)
+
+    args = theStateAdmin.stateVars + theStateAdmin.inputs
+
+    for block in delayblocks:
+        fnc = sp.lambdify(args, block.X.subs(potential_rhs_exprns))
+        block.input_fnc = fnc
+
     z_vect = np.array([block.read() for block in delayblocks])
 
     # create an empty array to which the results will by added
@@ -763,13 +785,8 @@ def blocksimulation(tend, inputs=None, z0=None, dt=5e-3):
 
     tvect = np.array([])
 
-    # generating the model from the blocks
-    rhs = gen_rhs(theStateAdmin)
-
-
     while True:
         # save the current values
-        # IPS()
         stateresults = np.vstack((stateresults, r_[z, u_vect]))
         tvect = np.hstack((tvect, t))
 
@@ -785,8 +802,11 @@ def blocksimulation(tend, inputs=None, z0=None, dt=5e-3):
         u_vect = [fnc(t) for fnc in inputfncs]
 
         # handle delay blocks
+
         for i, block in enumerate(delayblocks):
-            block.write_and_step(0)
+            # IPS()
+            value = block.input_fnc(*stateresults[-1, :])
+            block.write_input_and_step(value)
             z_vect[i] = block.read()
 
     tvect = tvect
