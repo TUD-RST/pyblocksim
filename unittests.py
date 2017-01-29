@@ -185,7 +185,7 @@ class TestInternals(unittest.TestCase):
             x = i**2 + 500
             arr_in[i] = x
             arr_out[i] = rb.read()
-            rb.write(x)
+            rb.write_and_step(x)
 
         if 0:
             import matplotlib.pyplot as plt
