@@ -19,8 +19,6 @@ import sympy as sp
 import inspect
 import warnings
 
-from ipHelp import IPS # for debugging
-
 
 __version__ = '0.2.1dev'
 
@@ -804,12 +802,12 @@ def blocksimulation(tend, inputs=None, z0=None, dt=5e-3):
         # handle delay blocks
 
         for i, block in enumerate(delayblocks):
-            # IPS()
             value = block.input_fnc(*stateresults[-1, :])
             block.write_input_and_step(value)
             z_vect[i] = block.read()
 
     tvect = tvect
+
     return tvect, stateresults
 
 

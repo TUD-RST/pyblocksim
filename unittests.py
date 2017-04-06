@@ -18,12 +18,14 @@ if the results are equal to manually checked reference data
 (up to small numerical differences)
 """
 
-test_examples = {1: 'example1',
+test_examples = {
+                 1: 'example1',
                  2: 'example2',
                  3: 'example3',
                  4: 'example4',
                  5: 'example-hysteresis',
                  6: 'example06-output-derivative',
+                 7: 'example07-delay',
                  }
 
 
@@ -42,9 +44,15 @@ def generate_data(example_name):
     pbs.restart()
     mod = importlib.import_module(example_name)
 
+    # convert the block-output-dict
+    bo = convert_dict_key_to_str(mod.bo)
+
+    # from ipHelp import IPS
+    # IPS()
+
     fname = get_fname(example_name)
     with open(fname, "wb") as pfile:
-        pickle.dump(mod.bo, pfile)
+        pickle.dump(bo, pfile)
     print(fname, " written.")
 
 
@@ -65,6 +73,9 @@ def convert_dict_key_to_str(thedict):
     res = {}
     for k, v in thedict.items():
         res[k.name] = v
+
+    if not len(thedict) == len(res):
+        raise ValueError("The original dict contained at least two objects with the same name")
     return res
 
 
@@ -209,7 +220,9 @@ class TestExamples(unittest.TestCase):
         mod = importlib.import_module(test_examples[K])
         bo_ref = load_data(K)
 
-        bo_ref = convert_dict_key_to_str(bo_ref)
+        # bo_ref = convert_dict_key_to_str(bo_ref)
+        if K != 6:
+            return
         mod.bo = convert_dict_key_to_str(mod.bo)
 
         self.assertEqual(set(mod.bo.keys()), set(bo_ref.keys()))
@@ -236,12 +249,17 @@ class TestExamples(unittest.TestCase):
     def test_example_output_deriv(self):
         self.specific_example_test(6)
 
+    def test_example_delay(self):
+        self.specific_example_test(7)
+
 
 if __name__ == '__main__':
 
     if 'generate_data' in sys.argv:
         for k, v in test_examples.items():
             generate_data(v)
+    elif 'gd07' in sys.argv:
+            generate_data(test_examples[7])
     else:
         unittest.main()
 
