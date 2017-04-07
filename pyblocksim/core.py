@@ -694,7 +694,10 @@ def compute_block_ouptputs(simresults):
         # on the right hand side no Yii should be found
         to_be_empty = v.atoms().intersection(blockout_vars)
 
-        assert to_be_empty == set()
+        if not to_be_empty == set():
+            from IPython import embed as IPS
+            IPS()
+            raise ValueError("This set should be empty: ", to_be_empty)
 
     for bl in list(theStateAdmin.allBlocks.values()):
 
