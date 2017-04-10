@@ -105,6 +105,7 @@ class StateAdmin(object):
         self.dynEqns = []  # list for storing the rhs of state eqns
         self.auxEqns = []  # list for the auxillary eqns
         self.stateVars = []
+        self.pseudoStateVars = []  # Symbols to save the output of delay blocks
         self.inputs = []
 
         self.IBlocks = {}
@@ -169,8 +170,17 @@ class StateAdmin(object):
         self.allBlocks[block.Y] = block
         self.allBlockNames[block.name] = block
 
+        block.stateadmin = self
+        self._register_new_states(block)
+        self.pseudoStateVars.extend(block.stateVars)
 
     def _register_new_states(self, block):
+        """
+        :param block:
+
+        Create and distribute symbols for the state variables for the passed block.
+        This method is also used for pseudo states (delay blocks)
+        """
         # let the block know which indices belong to it
         block.idcs = list(range(self.dim, self.dim+block.order))
         self.dim += block.order
@@ -504,6 +514,14 @@ class DelayBlock(AbstractBlock):
         self.X = insig
         self.Y = next(blockoutputs)
 
+        self.stateadmin = None
+
+        # There will be one pseudo state to store the output of this block
+        self.order = 1
+        # this will be lenght-1-sequences after registration
+        self.idcs = None
+        self.stateVars = None
+
         self.input_value_fnc = None
         # this will be the ringbuffer
         self.rb = None
@@ -716,6 +734,8 @@ def compute_block_ouptputs(simresults):
             tp = type(tmp[0])
             msg = "Invalid type ({}) while computing output of block: {}.".format(tp, bl.name)
             e.args = (msg, )
+            from IPython import embed as IPS
+            IPS()
             raise
             # raise TypeError(msg)
 
@@ -752,7 +772,7 @@ def blocksimulation(tend, inputs=None, z0=None, dt=5e-3):
 
     allinputs = {}
     for i in theStateAdmin.inputs:
-        allinputs[i] = lambda t: 0 # dummy functions
+        allinputs[i] = lambda t: 0  # dummy functions
 
     allinputs.update(inputs)
     inputfncs = [allinputs[i] for i in theStateAdmin.inputs]
