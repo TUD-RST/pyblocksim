@@ -709,7 +709,15 @@ def compute_block_ouptputs(simresults):
         # -> list of N 1d-arrays, N=number(statevars)+number(inputs)
 
         # for each timestep: evaluate the block specific func with the args
-        blocks[bl] = np.array([fnc(*na) for na in zip(*numargs)])
+        blocks[bl] = tmp = np.array([fnc(*na) for na in zip(*numargs)])
+        try:
+            float(tmp[0])
+        except TypeError as e:
+            tp = type(tmp[0])
+            msg = "Invalid type ({}) while computing output of block: {}.".format(tp, bl.name)
+            e.args = (msg, )
+            raise
+            # raise TypeError(msg)
 
     return blocks
 
