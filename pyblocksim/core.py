@@ -106,6 +106,7 @@ class StateAdmin(object):
         self.auxEqns = []  # list for the auxillary eqns
         self.stateVars = []
         self.pseudoStateVars = []  # Symbols to save the output of delay blocks
+        self.pseudoStateVarIndices = []  # indices of pseudo state vars
         self.inputs = []
 
         self.IBlocks = {}
@@ -173,6 +174,12 @@ class StateAdmin(object):
         block.stateadmin = self
         self._register_new_states(block)
         self.pseudoStateVars.extend(block.stateVars)
+        self.pseudoStateVarIndices.extend(block.idcs)
+
+        # TODO: find a more elegant way
+        # the corresponding equation for the pseudo state
+        # is not important, we just need some expression
+        self.dynEqns.append(sp.sympify(0))
 
     def _register_new_states(self, block):
         """
@@ -673,11 +680,17 @@ def gen_rhs(stateadmin):
 #    for u in loops:
 #        theStateAdmin.inputs.remove(u)
 
+    # handle delay blocks:
+    stateadmin.delayblockoutputs = []
+
+    for k, v in stateadmin.DelayBlocks.items():
+        stateadmin.delayblockoutputs.append(k)
+        # associate the pseudo state variable
+        subsdict[k] = psv = v.stateVars[0]
+        assert psv in stateadmin.pseudoStateVars
+
     # save the relations for later use
     stateadmin.blockoutdict = subsdict
-
-    # handle delay blocks:
-    stateadmin.delayblockoutputs = list(stateadmin.DelayBlocks.keys())
 
     args = stateadmin.stateVars + stateadmin.inputs +\
            stateadmin.delayblockoutputs
@@ -742,18 +755,18 @@ def compute_block_ouptputs(simresults):
     return blocks
 
 
-def blocksimulation(tend, inputs=None, z0=None, dt=5e-3):
+def blocksimulation(tend, inputs=None, xx0=None, dt=5e-3):
     """
-    z0        state for t = 0
+    xx0       state for t = 0
     inputs    a dict (like {u1 : calc_u1, u2 : calc_u2} where calc_u1, ...
               are callables
               (in the case of just one specified input (u1, calc_u1) is allowed
     """
 
-    if z0 is None:
-        z0 = [0]*theStateAdmin.dim
+    if xx0 is None:
+        xx0 = [0]*theStateAdmin.dim
 
-    assert len(z0) == theStateAdmin.dim
+    assert len(xx0) == theStateAdmin.dim
 
     assert float(tend) == tend and tend > 0
 
@@ -781,7 +794,7 @@ def blocksimulation(tend, inputs=None, z0=None, dt=5e-3):
     rhs = gen_rhs(theStateAdmin)
 
     t = 0
-    z = z0
+    x_vect = xx0
 
     # input vector
     u_vect = np.array([fnc(0) for fnc in inputfncs])
@@ -806,26 +819,32 @@ def blocksimulation(tend, inputs=None, z0=None, dt=5e-3):
         fnc = sp.lambdify(args, block.X.subs(potential_rhs_exprns))
         block.input_fnc = fnc
 
-    z_vect = np.array([block.read() for block in delayblocks])
+    d_vect = np.array([block.read() for block in delayblocks])
+
+    assert len(theStateAdmin.pseudoStateVarIndices) == len(d_vect)
 
     # create an empty array to which the results will by added
-    arr_length = len(z) + len(u_vect)
+    arr_length = len(x_vect) + len(u_vect)
     stateresults = np.array([]).reshape(0, arr_length)
 
     tvect = np.array([])
 
     while True:
         # save the current values
-        stateresults = np.vstack((stateresults, r_[z, u_vect]))
+        stateresults = np.vstack((stateresults, r_[x_vect, u_vect]))
         tvect = np.hstack((tvect, t))
 
         if t >= tend:
             break
 
         # calculate the next values
-        addargs = tuple(u_vect) + tuple(z_vect)
-        z = integrate.odeint(rhs, z, r_[t, t+dt], addargs)
-        z = z[-1, :]
+        addargs = tuple(u_vect) + tuple(d_vect)
+        x_vect = integrate.odeint(rhs, x_vect, r_[t, t+dt], addargs)
+        x_vect = x_vect[-1, :]
+
+        # save the value of delay block in the corresponding pseudo state
+        for idx, d_value in zip(theStateAdmin.pseudoStateVarIndices, d_vect):
+            x_vect[idx] = d_value
 
         t += dt
         u_vect = [fnc(t) for fnc in inputfncs]
@@ -835,7 +854,7 @@ def blocksimulation(tend, inputs=None, z0=None, dt=5e-3):
         for i, block in enumerate(delayblocks):
             value = block.input_fnc(*stateresults[-1, :])
             block.write_input_and_step(value)
-            z_vect[i] = block.read()
+            d_vect[i] = block.read()
 
     tvect = tvect
 
