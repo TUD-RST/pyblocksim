@@ -7,6 +7,7 @@ Module for block based modeling and simulation of dynamic systems
 
 from __future__ import print_function
 from six import string_types  # py2 and 3 compatibility
+from collections import OrderedDict
 
 from numpy.lib.index_tricks import r_
 
@@ -109,15 +110,16 @@ class StateAdmin(object):
         self.pseudoStateVarIndices = []  # indices of pseudo state vars
         self.inputs = []
 
-        self.IBlocks = {}
-        self.NILBlocks = {}
-        self.Blockfncs = {}
-        self.DelayBlocks = {}
+        # use ordered dicts to allow access via name and via index
+        self.IBlocks = OrderedDict()
+        self.NILBlocks = OrderedDict()
+        self.Blockfncs = OrderedDict()
+        self.DelayBlocks = OrderedDict()
 
-        self.allBlocks = {}
-        self.allBlockNames = {}
-        self.metaBlocks = {}
-        self.loops = {}
+        self.allBlocks = OrderedDict()
+        self.allBlockNames = OrderedDict()
+        self.metaBlocks = OrderedDict()
+        self.loops = OrderedDict()
 
         self.blockoutdict = None
 
@@ -200,6 +202,13 @@ class StateAdmin(object):
         return self.auxdim-1
 
     def _register_dynEqns(self, idcs, insig, expr):
+        """
+
+        :param idcs:    indices w.r.t the overall state vector
+        :param insig:   input signal
+        :param expr:    denominator expression (like s**2 + 3s - 2)
+        :return:
+        """
         coeffs = expr2coeffs(expr)
         order = degree(expr)
 
@@ -207,13 +216,18 @@ class StateAdmin(object):
 
         self.dynEqns.extend([None]*len(idcs))
 
+        # the following requires that the respective state vars have already been created and
+        # are stored in self.statevars
+
+        # handle integrator chains like xdot1 = x2
         tmpVars = []
         for i in idcs[0:-1]:
             tmpVars.append(self.stateVars[i+1])
             self.dynEqns[i] = tmpVars[-1]
 
+        # create the last line of the controller canonical form
         tmpVars.insert(0, self.stateVars[idcs[0]])
-        inputeqn = sum([-c*v for c,v in zip(coeffs[:-1], tmpVars) ]) + insig
+        inputeqn = sum([-c*v for c, v in zip(coeffs[:-1], tmpVars) ]) + insig
         self.dynEqns[idcs[-1]] = inputeqn
 
     def register_inputs(self, namestr):
@@ -293,7 +307,7 @@ class StateAdmin(object):
 # End of class StateAdmin
 
 
-def expr2coeffs(expr, lead_test = True):
+def expr2coeffs(expr, lead_test=True):
     """ returns a list of the coeffs (highest last)
     """
 
@@ -703,7 +717,6 @@ def gen_rhs(stateadmin):
         fnc = sp.lambdify(args, eq)
         state_rhs_fncs.append(fnc)
 
-    # !! TODO: vectorize and time dependence
     def rhs(z, t, *addargs):
         fncargs = list(z)+list(addargs)
         dz = [fnc(*fncargs) for fnc in state_rhs_fncs]
@@ -791,7 +804,7 @@ def blocksimulation(tend, inputs=None, xx0=None, dt=5e-3):
     inputfncs = [allinputs[i] for i in theStateAdmin.inputs]
 
     # generating the model from the blocks
-    rhs = gen_rhs(theStateAdmin)
+    theStateAdmin.rhs = rhs = gen_rhs(theStateAdmin)
 
     t = 0
     x_vect = xx0
@@ -816,8 +829,12 @@ def blocksimulation(tend, inputs=None, xx0=None, dt=5e-3):
     args = theStateAdmin.stateVars + theStateAdmin.inputs
 
     for block in delayblocks:
-        fnc = sp.lambdify(args, block.X.subs(potential_rhs_exprns))
+        expr = block.X.subs(potential_rhs_exprns)
+        fnc = sp.lambdify(args, expr)
         block.input_fnc = fnc
+
+        # save the expression of the lambdified function for debug purposes
+        block.input_fnc.expr = expr
 
     d_vect = np.array([block.read() for block in delayblocks])
 
