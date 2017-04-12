@@ -20,6 +20,8 @@ import sympy as sp
 import inspect
 import warnings
 
+# from ipHelp import IPS  # for debugging
+
 
 __version__ = '0.2.1dev'
 
@@ -268,7 +270,7 @@ class StateAdmin(object):
 
         # coeffs are sorted like this: [a_0, ..., a_n]
         tmplist = [c*prevblock.requestDeriv(i)
-                                for i,c in enumerate(nilblock.coeffs)]
+                                for i, c in enumerate(nilblock.coeffs)]
 
         formula = sum(tmplist)
 
@@ -605,8 +607,8 @@ def exceptionwrapper(fnc):
         try:
             return fnc(*args, **kwargs)
         except Exception as e:
-            import traceback as tb
-            tb.print_exc()
+            import traceback
+            traceback.print_exc()
             sys.exit(1)
 
     return newfnc
@@ -639,6 +641,15 @@ def gen_rhs(stateadmin):
 
     subsdict.update(fncs)
 
+    # handle delay blocks:
+    stateadmin.delayblockoutputs = []
+
+    for k, v in stateadmin.DelayBlocks.items():
+        stateadmin.delayblockoutputs.append(k)
+        # associate the pseudo state variable
+        subsdict[k] = psv = v.stateVars[0]
+        assert psv in stateadmin.pseudoStateVars
+
     # now eliminate the Yii vars in the expressions:
     Yii = set(subsdict.keys())
     finished_expr = {}
@@ -670,7 +681,7 @@ def gen_rhs(stateadmin):
 
     # close the loops
     loops = {}
-    for u, y in list(stateadmin.loops.items()):
+    for u, y in stateadmin.loops.items():
         new_y = y.subs(subsdict)
         loops[u] = new_y
 
@@ -693,15 +704,6 @@ def gen_rhs(stateadmin):
     # but this cause problems if the gen_rhs is called more than once
 #    for u in loops:
 #        theStateAdmin.inputs.remove(u)
-
-    # handle delay blocks:
-    stateadmin.delayblockoutputs = []
-
-    for k, v in stateadmin.DelayBlocks.items():
-        stateadmin.delayblockoutputs.append(k)
-        # associate the pseudo state variable
-        subsdict[k] = psv = v.stateVars[0]
-        assert psv in stateadmin.pseudoStateVars
 
     # save the relations for later use
     stateadmin.blockoutdict = subsdict
@@ -739,8 +741,6 @@ def compute_block_ouptputs(simresults):
         to_be_empty = v.atoms().intersection(blockout_vars)
 
         if not to_be_empty == set():
-            from IPython import embed as IPS
-            IPS()
             raise ValueError("This set should be empty: ", to_be_empty)
 
     for bl in list(theStateAdmin.allBlocks.values()):
@@ -760,10 +760,7 @@ def compute_block_ouptputs(simresults):
             tp = type(tmp[0])
             msg = "Invalid type ({}) while computing output of block: {}.".format(tp, bl.name)
             e.args = (msg, )
-            from IPython import embed as IPS
-            IPS()
             raise
-            # raise TypeError(msg)
 
     return blocks
 
