@@ -712,12 +712,16 @@ def gen_rhs(stateadmin):
            stateadmin.delayblockoutputs
 
     state_rhs_fncs = []
+    stateadmin.final_equations = []
+    stateadmin.args = args
 
     # the inputs and parameters are taken from global scope (w.r.t. rhs)
     for eq in stateadmin.dynEqns:
         eq = eq.subs(subsdict)
+        stateadmin.final_equations.append(eq)
         fnc = sp.lambdify(args, eq)
         state_rhs_fncs.append(fnc)
+
 
     def rhs(z, t, *addargs):
         fncargs = list(z)+list(addargs)
@@ -873,6 +877,43 @@ def blocksimulation(tend, inputs=None, xx0=None, dt=5e-3):
     tvect = tvect
 
     return tvect, stateresults
+
+
+def get_linear_ct_model(stateadmin, system_output):
+    """
+    Return Matrices A, B, C, D
+
+
+    :param stateadmin:
+    :return:
+    """
+
+    gen_rhs(stateadmin)
+
+    sys_eqns = sp.Matrix(stateadmin.final_equations)
+    xx = sp.Matrix(stateadmin.stateVars)
+    uu = sp.Matrix([u for u  in stateadmin.inputs if u not in theStateAdmin.loops])
+
+    # symbolic matrices
+    As = sys_eqns.jacobian(xx)
+    Bs = sys_eqns.jacobian(uu)
+
+    system_output2 = system_output.subs(theStateAdmin.blockoutdict)
+
+    Cs = system_output2.jacobian(xx)
+    Ds = system_output2.jacobian(uu)
+
+    # test that we have a linear system (no symbols occur in the matrices -> assert empty set)
+    assert not As.atoms(sp.Symbol)
+    assert not Bs.atoms(sp.Symbol)
+    assert not Cs.atoms(sp.Symbol)
+    assert not Ds.atoms(sp.Symbol)
+
+    # create numeric arrays
+    A, B, C, D = (np.array(np.array(M), dtype=np.float) for M in (As, Bs, Cs, Ds))
+
+    return A, B, C, D
+
 
 
 def stepfnc(tup, amp1=1, tdown = np.inf, amp0=0):
