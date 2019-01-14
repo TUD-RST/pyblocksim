@@ -4,10 +4,6 @@
 intermediate module for convenient importing of all needed and useful objects
 """
 
-
-
-
-
 from numpy.lib.index_tricks import r_ as r_
 
 import numpy as np
@@ -20,3 +16,4 @@ from .core import s, t, TFBlock, Blockfnc, compute_block_ouptputs,\
                         inputs, Trajectory, mainprint, sys, restart, warnings,\
                         RingBuffer, DelayBlock, get_linear_ct_model
 
+from .release import __version__

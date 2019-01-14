@@ -20,10 +20,6 @@ import sympy as sp
 import inspect
 import warnings
 
-# from ipHelp import IPS  # for debugging
-
-
-__version__ = '0.2.1dev'
 
 
 def mainprint(*args, **kwargs):

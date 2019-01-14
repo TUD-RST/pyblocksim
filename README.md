@@ -58,6 +58,11 @@ pip install pyblocksim
 should install the package including all examples.
 If something goes wrong, feel free to file an issue or contact the author(s).
 
+## Getting started
+The recommended entry point ist the `examples`-folder.
+*Note*: the examples are not installed with pip and have to be downloaded
+ separately.
+
 ## Dependencies
 
 Since 2016-11-09 this package uses python3 syntax.
@@ -69,6 +74,8 @@ Besides the Python standard library pyblocksim depends on
 - sympy
 - matplotlib (for visualization only)
 
+When installing with `pip` the dependencies should be automatically
+installed. See also `requirements.txt`.
 
 
 ## Documentation
