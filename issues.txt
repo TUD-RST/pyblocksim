@@ -1,0 +1,40 @@
+2017-04-12 13:03:09
+doppelte Belegung von Input-Namen fällt nicht auf
+
+Null-ÜF schwierig einzugeben
+
+
+2017-04-11 23:32:51
+---------
+
+nicht-deterministische Ergebnisse mit delayblöcken
+
+
+
+---------
+
+2017-04-07 10:30:56
+
+block_copy() wäre wünschenswert
+
+2017-01-29 21:27:50
+
+Verzugsglieder:
+
+vor einem Integrationsschritt werden die aktuellen Eingänge des Vertzugsgliedes bestimmt.
+
+Ringspeicher mit Schreibindex und Leseindex
+
+2017-01-24 15:07:55
+
+Es gibt noch ein Problem mit den Eingängen
+
+
+2017-01-17 12:29:45
+
+auch die block-ausgänge sollten 1d sein [x]
+
+tt, states = blocksimulation(20, (u1, u1fnc))
+
+tt sollte 1d sein und nicht mit [0, 0, 0.05, ...] beginnen.
+
