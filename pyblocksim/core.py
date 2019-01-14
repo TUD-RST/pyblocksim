@@ -7,6 +7,7 @@ Module for block based modeling and simulation of dynamic systems
 
 from __future__ import print_function
 from six import string_types  # py2 and 3 compatibility
+from collections import OrderedDict
 
 from numpy.lib.index_tricks import r_
 
@@ -19,7 +20,7 @@ import sympy as sp
 import inspect
 import warnings
 
-# from ipHelp import IPS # for debugging
+# from ipHelp import IPS  # for debugging
 
 
 __version__ = '0.2.1dev'
@@ -107,16 +108,20 @@ class StateAdmin(object):
         self.dynEqns = []  # list for storing the rhs of state eqns
         self.auxEqns = []  # list for the auxillary eqns
         self.stateVars = []
+        self.pseudoStateVars = []  # Symbols to save the output of delay blocks
+        self.pseudoStateVarIndices = []  # indices of pseudo state vars
         self.inputs = []
 
-        self.IBlocks = {}
-        self.NILBlocks = {}
-        self.Blockfncs = {}
+        # use ordered dicts to allow access via name and via index
+        self.IBlocks = OrderedDict()
+        self.NILBlocks = OrderedDict()
+        self.Blockfncs = OrderedDict()
+        self.DelayBlocks = OrderedDict()
 
-        self.allBlocks = {}
-        self.allBlockNames = {}
-        self.metaBlocks = {}
-        self.loops = {}
+        self.allBlocks = OrderedDict()
+        self.allBlockNames = OrderedDict()
+        self.metaBlocks = OrderedDict()
+        self.loops = OrderedDict()
 
         self.blockoutdict = None
 
@@ -134,6 +139,8 @@ class StateAdmin(object):
             self._register_Blockfnc(block)
         elif isinstance(block, TFBlock):
             self._register_TFBlock(block)
+        elif isinstance(block, DelayBlock):
+            self._register_DelayBlock(block)
         else:
             raise TypeError()
 
@@ -163,7 +170,28 @@ class StateAdmin(object):
         self.allBlockNames[block.name] = block
         self.metaBlocks[block.Y] = block
 
+    def _register_DelayBlock(self, block):
+        self.DelayBlocks[block.Y] = block
+        self.allBlocks[block.Y] = block
+        self.allBlockNames[block.name] = block
+
+        block.stateadmin = self
+        self._register_new_states(block)
+        self.pseudoStateVars.extend(block.stateVars)
+        self.pseudoStateVarIndices.extend(block.idcs)
+
+        # TODO: find a more elegant way
+        # the corresponding equation for the pseudo state
+        # is not important, we just need some expression
+        self.dynEqns.append(sp.sympify(0))
+
     def _register_new_states(self, block):
+        """
+        :param block:
+
+        Create and distribute symbols for the state variables for the passed block.
+        This method is also used for pseudo states (delay blocks)
+        """
         # let the block know which indices belong to it
         block.idcs = list(range(self.dim, self.dim+block.order))
         self.dim += block.order
@@ -176,6 +204,13 @@ class StateAdmin(object):
         return self.auxdim-1
 
     def _register_dynEqns(self, idcs, insig, expr):
+        """
+
+        :param idcs:    indices w.r.t the overall state vector
+        :param insig:   input signal
+        :param expr:    denominator expression (like s**2 + 3s - 2)
+        :return:
+        """
         coeffs = expr2coeffs(expr)
         order = degree(expr)
 
@@ -183,13 +218,18 @@ class StateAdmin(object):
 
         self.dynEqns.extend([None]*len(idcs))
 
+        # the following requires that the respective state vars have already been created and
+        # are stored in self.statevars
+
+        # handle integrator chains like xdot1 = x2
         tmpVars = []
         for i in idcs[0:-1]:
             tmpVars.append(self.stateVars[i+1])
             self.dynEqns[i] = tmpVars[-1]
 
+        # create the last line of the controller canonical form
         tmpVars.insert(0, self.stateVars[idcs[0]])
-        inputeqn = sum([-c*v for c,v in zip(coeffs[:-1], tmpVars) ]) + insig
+        inputeqn = sum([-c*v for c, v in zip(coeffs[:-1], tmpVars) ]) + insig
         self.dynEqns[idcs[-1]] = inputeqn
 
     def register_inputs(self, namestr):
@@ -218,11 +258,11 @@ class StateAdmin(object):
         """
         assert isinstance(nilblock, NILBlock)
 
-        if nilblock.X in self.inputs and len(nilblock.coeffs)>1:
+        if nilblock.X in self.inputs and len(nilblock.coeffs) > 1:
             raise NotImplementedError("Input derivative")
 
         if not nilblock.X in self.IBlocks:
-            raise ValueError("Invalid input signal of "+ str(nilblock))
+            raise ValueError("Invalid input signal of " + str(nilblock))
 
         prevblock = self.IBlocks[nilblock.X]
 
@@ -230,7 +270,7 @@ class StateAdmin(object):
 
         # coeffs are sorted like this: [a_0, ..., a_n]
         tmplist = [c*prevblock.requestDeriv(i)
-                                for i,c in enumerate(nilblock.coeffs)]
+                                for i, c in enumerate(nilblock.coeffs)]
 
         formula = sum(tmplist)
 
@@ -259,10 +299,17 @@ class StateAdmin(object):
         new_subs_dict = subsdict.copy()
         new_subs_dict.update(results)
         return bf.expr.subs(new_subs_dict)
+
+    def setup_DelayBlocks(self, dt):
+        # idea: setup the delay blocks before the simulation starts
+        # at that time dt is known and so we can calculate the
+        # buffer length
+        for key, block in self.DelayBlocks.items():
+            block._setup(dt)
 # End of class StateAdmin
 
 
-def expr2coeffs(expr, lead_test = True):
+def expr2coeffs(expr, lead_test=True):
     """ returns a list of the coeffs (highest last)
     """
 
@@ -361,13 +408,14 @@ class IBlock(AbstractBlock):
                                        "supported")
 
 
+# TODO: should be renamed to RTFBlock (due to rational TF)
 class TFBlock(AbstractBlock):
     """
-    Metablock for representing polynomial transfer functions
+    Metablock for representing rational transfer functions
     will be decomposed to numerator (NILBlock) and denom. (IBlock)
     """
 
-    def __init__(self, expr, insig, name= None):
+    def __init__(self, expr, insig, name=None):
 
         AbstractBlock.__init__(self, name)
 
@@ -473,6 +521,82 @@ class Blockfnc(AbstractBlock):
         self.expr = expr
 
 
+class DelayBlock(AbstractBlock):
+
+    def __init__(self, T, insig, ivalue=None, name=None):
+        """
+        :param T:       delaytime
+        :param insig:   input signal of the block
+        :param ivalue   initial value (array or function);
+                        not yet supported
+        :param name:
+        """
+        AbstractBlock.__init__(self, name)
+        self.T = T
+
+        self.X = insig
+        self.Y = next(blockoutputs)
+
+        self.stateadmin = None
+
+        # There will be one pseudo state to store the output of this block
+        self.order = 1
+        # this will be lenght-1-sequences after registration
+        self.idcs = None
+        self.stateVars = None
+
+        self.input_value_fnc = None
+        # this will be the ringbuffer
+        self.rb = None
+
+        if ivalue is not None:
+            raise NotImplementedError("Initial value not yet supported")
+
+        theStateAdmin.register_block(self)
+
+    def _setup(self, dt):
+        """
+        should be called beor
+        :param dt:
+        :return:
+        """
+        length = int(self.T / dt)
+        self.rb = RingBuffer(length)
+
+    def read(self):
+        return self.rb.read()
+
+    def write_input_and_step(self, input_value):
+        return self.rb.write_and_step(input_value)
+
+
+class RingBuffer(object):
+    """
+    data structure for saving the internal state of a delay block
+    """
+
+    def __init__(self, length):
+        self._storrage = np.zeros(length)
+        self._length = length
+        self._idx = 0
+        self._flag_read = False
+
+    def read(self):
+        assert not self._flag_read
+        self._flag_read = True
+        return self._storrage[self._idx]
+
+    def write_and_step(self, value):
+        assert np.allclose(np.float64(value), value)
+
+        # ensure we already read the value
+        assert self._flag_read
+
+        self._storrage[self._idx] = value
+        self._idx = (self._idx + 1) % self._length
+        self._flag_read = False
+
+
 def exceptionwrapper(fnc):
     """
     prevent the integration algorithm to get stuck if
@@ -483,14 +607,14 @@ def exceptionwrapper(fnc):
         try:
             return fnc(*args, **kwargs)
         except Exception as e:
-            import traceback as tb
-            tb.print_exc()
+            import traceback
+            traceback.print_exc()
             sys.exit(1)
 
     return newfnc
 
 
-#TODO this function is too long
+# TODO this function is too long
 def gen_rhs(stateadmin):
     """
     resolves dependencies in the eqns
@@ -502,12 +626,12 @@ def gen_rhs(stateadmin):
 
     # handle integrating blocks (Yii <- SV_jj)
     for y, bl in stateadmin.IBlocks.items():
-        subsdict.update({y : stateadmin.stateVars[bl.idcs[0]]})
+        subsdict.update({y: stateadmin.stateVars[bl.idcs[0]]})
 
     # handle NIL Blocks
     for y, bl in stateadmin.NILBlocks.items():
         eqn_rhs = stateadmin.get_nil_eq(bl)  # can still contain Yii -vars
-        subsdict.update({y : eqn_rhs})
+        subsdict.update({y: eqn_rhs})
 
     # handle Blockfncs
     fncs = {}
@@ -516,6 +640,15 @@ def gen_rhs(stateadmin):
         fncs[y] = new_y
 
     subsdict.update(fncs)
+
+    # handle delay blocks:
+    stateadmin.delayblockoutputs = []
+
+    for k, v in stateadmin.DelayBlocks.items():
+        stateadmin.delayblockoutputs.append(k)
+        # associate the pseudo state variable
+        subsdict[k] = psv = v.stateVars[0]
+        assert psv in stateadmin.pseudoStateVars
 
     # now eliminate the Yii vars in the expressions:
     Yii = set(subsdict.keys())
@@ -548,7 +681,7 @@ def gen_rhs(stateadmin):
 
     # close the loops
     loops = {}
-    for u, y in list(stateadmin.loops.items()):
+    for u, y in stateadmin.loops.items():
         new_y = y.subs(subsdict)
         loops[u] = new_y
 
@@ -575,7 +708,9 @@ def gen_rhs(stateadmin):
     # save the relations for later use
     stateadmin.blockoutdict = subsdict
 
-    args = stateadmin.stateVars+stateadmin.inputs
+    args = stateadmin.stateVars + stateadmin.inputs +\
+           stateadmin.delayblockoutputs
+
     state_rhs_fncs = []
 
     # the inputs and parameters are taken from global scope (w.r.t. rhs)
@@ -584,9 +719,7 @@ def gen_rhs(stateadmin):
         fnc = sp.lambdify(args, eq)
         state_rhs_fncs.append(fnc)
 
-    # !! TODO: vectorize and time dependence
     def rhs(z, t, *addargs):
-        u = addargs
         fncargs = list(z)+list(addargs)
         dz = [fnc(*fncargs) for fnc in state_rhs_fncs]
         return dz
@@ -607,7 +740,8 @@ def compute_block_ouptputs(simresults):
         # on the right hand side no Yii should be found
         to_be_empty = v.atoms().intersection(blockout_vars)
 
-        assert to_be_empty == set()
+        if not to_be_empty == set():
+            raise ValueError("This set should be empty: ", to_be_empty)
 
     for bl in list(theStateAdmin.allBlocks.values()):
 
@@ -619,23 +753,30 @@ def compute_block_ouptputs(simresults):
         # -> list of N 1d-arrays, N=number(statevars)+number(inputs)
 
         # for each timestep: evaluate the block specific func with the args
-        blocks[bl] = np.array([fnc(*na) for na in zip(*numargs)])
+        blocks[bl] = tmp = np.array([fnc(*na) for na in zip(*numargs)])
+        try:
+            float(tmp[0])
+        except TypeError as e:
+            tp = type(tmp[0])
+            msg = "Invalid type ({}) while computing output of block: {}.".format(tp, bl.name)
+            e.args = (msg, )
+            raise
 
     return blocks
 
 
-def blocksimulation(tend, inputs=None, z0=None, dt=5e-3):
+def blocksimulation(tend, inputs=None, xx0=None, dt=5e-3):
     """
-    z0        state for t = 0
+    xx0       state for t = 0
     inputs    a dict (like {u1 : calc_u1, u2 : calc_u2} where calc_u1, ...
               are callables
               (in the case of just one specified input (u1, calc_u1) is allowed
     """
 
-    if z0 is None:
-        z0 = [0]*theStateAdmin.dim
+    if xx0 is None:
+        xx0 = [0]*theStateAdmin.dim
 
-    assert len(z0) == theStateAdmin.dim
+    assert len(xx0) == theStateAdmin.dim
 
     assert float(tend) == tend and tend > 0
 
@@ -654,41 +795,83 @@ def blocksimulation(tend, inputs=None, z0=None, dt=5e-3):
 
     allinputs = {}
     for i in theStateAdmin.inputs:
-        allinputs[i] = lambda t: 0 # dummy functions
+        allinputs[i] = lambda t: 0  # dummy functions
 
     allinputs.update(inputs)
     inputfncs = [allinputs[i] for i in theStateAdmin.inputs]
 
+    # generating the model from the blocks
+    theStateAdmin.rhs = rhs = gen_rhs(theStateAdmin)
+
     t = 0
-    z = z0
+    x_vect = xx0
 
     # input vector
     u_vect = np.array([fnc(0) for fnc in inputfncs])
 
+    # vector of delay block outputs:
+    theStateAdmin.setup_DelayBlocks(dt)
+    delayblocks = theStateAdmin.DelayBlocks.values()
+
+    # TODO: this should be a separat function
+    # the input of a deayblock is a) an system input
+    # or b) an other blockoutput
+
+    # will be a list of tuples:
+    potential_rhs_exprns = list(theStateAdmin.blockoutdict.items())
+    # add trivial equations for the input (like u1 = u1)
+    tuple_list = zip(theStateAdmin.inputs, theStateAdmin.inputs)
+    potential_rhs_exprns.extend(tuple_list)
+
+    args = theStateAdmin.stateVars + theStateAdmin.inputs
+
+    for block in delayblocks:
+        expr = block.X.subs(potential_rhs_exprns)
+        fnc = sp.lambdify(args, expr)
+        block.input_fnc = fnc
+
+        # save the expression of the lambdified function for debug purposes
+        block.input_fnc.expr = expr
+
+    d_vect = np.array([block.read() for block in delayblocks])
+
+    assert len(theStateAdmin.pseudoStateVarIndices) == len(d_vect)
+
     # create an empty array to which the results will by added
-    stateresults = np.array([]).reshape(0, len(z) + len(u_vect))
+    arr_length = len(x_vect) + len(u_vect)
+    stateresults = np.array([]).reshape(0, arr_length)
 
     tvect = np.array([])
 
-    # generating the model from the blocks
-    rhs = gen_rhs(theStateAdmin)
-
     while True:
         # save the current values
-        stateresults = np.vstack((stateresults, r_[z, u_vect]))
+        stateresults = np.vstack((stateresults, r_[x_vect, u_vect]))
         tvect = np.hstack((tvect, t))
 
         if t >= tend:
             break
 
         # calculate the next values
-        z = integrate.odeint(rhs, z, r_[t, t+dt], tuple(u_vect))
-        z = z[-1, :]
+        addargs = tuple(u_vect) + tuple(d_vect)
+        x_vect = integrate.odeint(rhs, x_vect, r_[t, t+dt], addargs)
+        x_vect = x_vect[-1, :]
+
+        # save the value of delay block in the corresponding pseudo state
+        for idx, d_value in zip(theStateAdmin.pseudoStateVarIndices, d_vect):
+            x_vect[idx] = d_value
 
         t += dt
         u_vect = [fnc(t) for fnc in inputfncs]
 
+        # handle delay blocks
+
+        for i, block in enumerate(delayblocks):
+            value = block.input_fnc(*stateresults[-1, :])
+            block.write_input_and_step(value)
+            d_vect[i] = block.read()
+
     tvect = tvect
+
     return tvect, stateresults
 
 
