@@ -18,6 +18,14 @@ if the results are equal to manually checked reference data
 (up to small numerical differences)
 """
 
+# path to this file -> path to the examples dir
+mod = sys.modules.get(__name__)
+the_dir1 = os.path.dirname(os.path.abspath(mod.__file__))
+the_dir2 = os.path.split(the_dir1)[0]
+the_dir3 = os.path.join(the_dir2, "examples")
+
+sys.path.append(the_dir3)
+
 test_examples = {
                  1: 'example1',
                  2: 'example2',
@@ -31,7 +39,7 @@ test_examples = {
 
 def get_fname(name):
     py_version_str = "py{}".format(sys.version_info.major)
-    return os.path.join("testdata", py_version_str, name + ".pcl")
+    return os.path.join(the_dir2, "testdata", py_version_str, name + ".pcl")
 
 
 def generate_data(example_name):
@@ -98,7 +106,8 @@ class TestInternals(unittest.TestCase):
         # first load all relevant source files as list of lines in a dict
         srclines = {"core": inspect.getsourcelines(pbs.core)[0]}
         for _, example_name in test_examples.items():
-            with open(example_name + ".py", 'r') as srcfile:
+            example_path = os.path.join(the_dir3, example_name)
+            with open(example_path + ".py", 'r') as srcfile:
                 src = srcfile.readlines()
             srclines[example_name] = src
 

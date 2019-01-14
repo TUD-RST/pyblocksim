@@ -44,7 +44,7 @@ def step_factory(y0, y1, x_step):
 step1 = step_factory(-1, 0, x1)
 step2 = step_factory(0, 1, x2)
 
-xx = np.linspace(1, 10, 1e5)
+xx = np.linspace(1, 10, int(1e5))
 
 #pl.plot(xx, step1(xx, np))
 #pl.plot(xx, step2(xx, np) + .1)
