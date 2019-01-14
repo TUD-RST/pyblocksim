@@ -1,17 +1,15 @@
 # -*- coding: utf-8 -*-
 
-import sys
-
-sys.path.append("./")
-
 from pyblocksim import *
 
-from ipydex import IPS
 
 mainprint("""
-Example2 : linear system consiting of various blocks
+Example2b : linear system consiting of various blocks
 
  (coupled linear transfer functions)
+
+ Here we additionally extract the statepace model and simulate it
+ with the control library.
 """)
 
 fb1, fb2, w, z11, z21, z12, z22 = inputs('fb1, fb2, w, z11, z21, z12, z22')
