@@ -1,3 +1,5 @@
+[![PyPI version](https://badge.fury.io/py/pyblocksim.svg)](https://badge.fury.io/py/pyblocksim)
+
 ## GENERAL INFORMATION
 
 Pyblocksim aims to mitigate the lack of a tool like Simulink (or scicos)
