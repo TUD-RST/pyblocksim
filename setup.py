@@ -14,12 +14,12 @@ setup(
     packages=['pyblocksim'],
     url='https://github.com/TUD-RST/pycartan',
     license='GPL3',
-    description='Python library for block-oriented modeling and simlation in control theory',
+    description='Python library for block-oriented modeling and simulation in control theory',
     long_description="""Pyblocksim aims to mitigate the lack of a tool like Simulink (or scicos)
-in the world of python based scientific computing.
-It aims to enable you to quickly implement a model of a dynamic system
-which is suited to be modeled by the feedback-free
-directed interconnection of blocks such as transfer functions.
+in the world of python based scientific computing. It aims to enable an low-effort implementation
+of a model of a dynamical system which is composed of interconnected blocks such as rational
+transfer functions and static nonlinearities. Delay blocks are supported via ring-buffers
+and discrete states can also be emulated (e.g. for hysteresis).
     """,
     keywords='control theory, simulation, modelling, feedback',
     install_requires=requirements,

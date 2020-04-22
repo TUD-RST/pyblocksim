@@ -767,10 +767,14 @@ def compute_block_ouptputs(simresults):
 
 def blocksimulation(tend, inputs=None, xx0=None, dt=5e-3):
     """
-    xx0       state for t = 0
-    inputs    a dict (like {u1 : calc_u1, u2 : calc_u2} where calc_u1, ...
-              are callables
-              (in the case of just one specified input (u1, calc_u1) is allowed
+    :param xx0:     state for t = 0
+    :param inputs:  a dict (like {u1 : calc_u1, u2 : calc_u2} where calc_u1,
+                    etc. are callables (in the case of just one specified
+                    input (u1, calc_u1) is allowed.
+
+    :return:        tuple (tt, xxuu)
+                    tt: array of simulation time instants
+                    xxuu: array of states and inputs
     """
 
     if xx0 is None:
@@ -839,13 +843,13 @@ def blocksimulation(tend, inputs=None, xx0=None, dt=5e-3):
 
     # create an empty array to which the results will by added
     arr_length = len(x_vect) + len(u_vect)
-    stateresults = np.array([]).reshape(0, arr_length)
+    xxuu = np.array([]).reshape(0, arr_length)
 
     tvect = np.array([])
 
     while True:
         # save the current values
-        stateresults = np.vstack((stateresults, r_[x_vect, u_vect]))
+        xxuu = np.vstack((xxuu, r_[x_vect, u_vect]))
         tvect = np.hstack((tvect, t))
 
         if t >= tend:
@@ -866,13 +870,13 @@ def blocksimulation(tend, inputs=None, xx0=None, dt=5e-3):
         # handle delay blocks
 
         for i, block in enumerate(delayblocks):
-            value = block.input_fnc(*stateresults[-1, :])
+            value = block.input_fnc(*xxuu[-1, :])
             block.write_input_and_step(value)
             d_vect[i] = block.read()
 
     tvect = tvect
 
-    return tvect, stateresults
+    return tvect, xxuu
 
 
 def get_linear_ct_model(stateadmin, system_output):
