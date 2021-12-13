@@ -3,7 +3,9 @@
 from pyblocksim import *
 
 mainprint("""
-Approximation of a simple hysteresis system
+Approximation of a simple hysteresis system.
+See also the jupyter notebook-version of this example:
+-> doc/notebooks/
 """)
 
 # switching tresholds for hysteresis
@@ -25,7 +27,7 @@ def step_factory(y0, y1, x_step):
     """
     Factory to create continously approximated step functions
     """
-    #tanh maps R to (-1, 1)
+    # tanh maps R to (-1, 1)
 
     # first map R to (0, 1)
     # then map (0, 1) -> (y0, y1)
@@ -33,7 +35,7 @@ def step_factory(y0, y1, x_step):
     dy = y1-y0
 
     def fnc(x, module=sp):
-     return (module.tanh(_tanh_factor*(x-x_step))+1 )/2*dy + y0
+        return (module.tanh(_tanh_factor*(x-x_step))+1 )/2*dy + y0
 
     fnc.__doc__ = "approximated step function %f, %f, %f" % (y0, y1, x_step)
 
