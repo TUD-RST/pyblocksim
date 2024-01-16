@@ -137,10 +137,22 @@ class StateAdmin(object):
             self._register_TFBlock(block)
         elif isinstance(block, DelayBlock):
             self._register_DelayBlock(block)
+        elif isinstance(block, RHSBlock):
+            self._register_RHSBlock(block)
         else:
             raise TypeError()
 
     def _register_IBlock(self, block):
+        self.IBlocks[block.Y] = block
+        self.allBlocks[block.Y] = block
+        self.allBlockNames[block.name] = block
+
+        block.stateadmin = self
+        self._register_new_states(block)
+        self._register_dynEqns(block.idcs, block.X, block.expr)
+
+    def _register_RHSBlock(self, block):
+        return
         self.IBlocks[block.Y] = block
         self.allBlocks[block.Y] = block
         self.allBlockNames[block.name] = block
@@ -402,6 +414,26 @@ class IBlock(AbstractBlock):
         else:
             raise NotImplementedError("derivative propagation not yet " \
                                        "supported")
+
+class RHSBlock(AbstractBlock):
+    """
+    Block that models a (nonlinear) system described via rhs vector field (expression)
+
+        x_dot = f(x, u)  # x: state, u: input
+
+    and an output function
+        y = h(x)
+    """
+    def __init__(self, f_expr, h_expr, state, insig, name=None):
+        AbstractBlock.__init__(self, name)
+
+        self.state = state
+        self.insig = insig
+        self.f_expr = f_expr
+        self.h_expr = h_expr
+
+        theStateAdmin.register_block(self)
+
 
 
 # TODO: should be renamed to RTFBlock (due to rational TF)

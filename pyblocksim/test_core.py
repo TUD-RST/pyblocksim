@@ -9,8 +9,6 @@ import numpy as np
 import pyblocksim as pbs
 import inspect
 
-# from ipHelp import IPS
-
 
 """
 The main idea of this test suite is to run examples and compare
@@ -261,6 +259,25 @@ class TestExamples(unittest.TestCase):
     def test_example_delay(self):
         self.specific_example_test(7)
 
+    def test_rhs_block(self):
+
+        u1, = pbs.inputs('u1,')
+        s = pbs.s
+        T = 3
+        k = 1
+        PT1_tf = pbs.TFBlock(k/(T*s + 1), u1)  # gain: 1, time constant: 3
+
+        x1, = xx = pbs.sp.symbols("x1:2")
+        PT1_rhs = pbs.RHSBlock(f_expr=1/T*(-x1 + k*u1), h_expr=x1, state=xx, insig=u1)
+
+        u1fnc = pbs.stepfnc(0.5, 1)
+        t, states = pbs.blocksimulation(10, (u1, u1fnc))  # integrate 10 seconds
+        bo = pbs.compute_block_ouptputs(states)
+
+        from ipydex import IPS
+        # IPS()
+
+
 
 if __name__ == '__main__':
 
@@ -271,4 +288,3 @@ if __name__ == '__main__':
             generate_data(test_examples[7])
     else:
         unittest.main()
-

@@ -14,6 +14,6 @@ import pylab as pl
 from .core import s, t, TFBlock, Blockfnc, compute_block_ouptputs,\
                         theStateAdmin, blocksimulation, stepfnc, loop,\
                         inputs, Trajectory, mainprint, sys, restart, warnings,\
-                        RingBuffer, DelayBlock, get_linear_ct_model
+                        RingBuffer, DelayBlock, get_linear_ct_model, RHSBlock
 
 from .release import __version__
