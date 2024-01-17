@@ -268,15 +268,14 @@ class TestExamples(unittest.TestCase):
         PT1_tf = pbs.TFBlock(k/(T*s + 1), u1)  # gain: 1, time constant: 3
 
         x1, = xx = pbs.sp.symbols("x1:2")
-        PT1_rhs = pbs.RHSBlock(f_expr=1/T*(-x1 + k*u1), h_expr=x1, state=xx, insig=u1)
+        PT1_rhs = pbs.RHSBlock(f_expr=1/T*(-x1 + k*u1), h_expr=x1, local_state=xx, insig=u1)
 
         u1fnc = pbs.stepfnc(0.5, 1)
         t, states = pbs.blocksimulation(10, (u1, u1fnc))  # integrate 10 seconds
         bo = pbs.compute_block_ouptputs(states)
 
-        from ipydex import IPS
-        # IPS()
-
+        diff = bo[PT1_tf] - bo[PT1_rhs]
+        np.allclose(bo[PT1_tf], bo[PT1_rhs])
 
 
 if __name__ == '__main__':

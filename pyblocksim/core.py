@@ -20,6 +20,12 @@ import sympy as sp
 import inspect
 import warnings
 
+# for debugging:
+try:
+    from ipydex import IPS
+except ImportError:
+    pass
+
 
 
 def mainprint(*args, **kwargs):
@@ -110,6 +116,7 @@ class StateAdmin(object):
 
         # use ordered dicts to allow access via name and via index
         self.IBlocks = OrderedDict()
+        self.RHSBlocks = OrderedDict()
         self.NILBlocks = OrderedDict()
         self.Blockfncs = OrderedDict()
         self.DelayBlocks = OrderedDict()
@@ -149,17 +156,16 @@ class StateAdmin(object):
 
         block.stateadmin = self
         self._register_new_states(block)
-        self._register_dynEqns(block.idcs, block.X, block.expr)
+        self._register_dynEqns(block.idcs, block.X, coeff_expr=block.expr)
 
-    def _register_RHSBlock(self, block):
-        return
-        self.IBlocks[block.Y] = block
+    def _register_RHSBlock(self, block: "RHSBlock"):
+        self.RHSBlocks[block.Y] = block
         self.allBlocks[block.Y] = block
         self.allBlockNames[block.name] = block
-
         block.stateadmin = self
         self._register_new_states(block)
-        self._register_dynEqns(block.idcs, block.X, block.expr)
+        block._replace_local_state()
+        self._register_dynEqns(block.idcs, block.X, rhs_expr=block.f_expr)
 
     def _register_NILBlock(self, block):
         self.NILBlocks[block.Y] = block
@@ -211,7 +217,7 @@ class StateAdmin(object):
         self.auxdim += 1
         return self.auxdim-1
 
-    def _register_dynEqns(self, idcs, insig, expr):
+    def _register_dynEqns(self, idcs, insig, coeff_expr=None, rhs_expr=None):
         """
 
         :param idcs:    indices w.r.t the overall state vector
@@ -219,15 +225,35 @@ class StateAdmin(object):
         :param expr:    denominator expression (like s**2 + 3s - 2)
         :return:
         """
-        coeffs = expr2coeffs(expr)
-        order = degree(expr)
-
-        assert not order == 0
 
         self.dynEqns.extend([None]*len(idcs))
 
         # the following requires that the respective state vars have already been created and
         # are stored in self.statevars
+
+        if coeff_expr is not None:
+            assert rhs_expr is None
+            coeffs = expr2coeffs(coeff_expr)
+            order = degree(coeff_expr)
+
+            assert order != 0
+            self.__insert_dynEqns_from_coeffs(idcs, coeffs, insig)
+        else:
+            assert isinstance(rhs_expr, sp.MatrixBase)
+            order = rhs_expr.shape[0]
+            assert order != 0
+            self.__insert_dynEqns_from_rhs_expr(idcs, rhs_expr, insig)
+
+    def __insert_dynEqns_from_rhs_expr(self, idcs, rhs_expr, insig):
+
+            assert isinstance(rhs_expr, sp.MatrixBase)
+            assert rhs_expr.shape == (len(idcs), 1)
+
+            for idx in idcs:
+                i = idx - idcs[0]  # idx is overal index, i is local index
+                self.dynEqns[idx] = rhs_expr[i, 0]
+
+    def __insert_dynEqns_from_coeffs(self, idcs, coeffs, insig):
 
         # handle integrator chains like xdot1 = x2
         tmpVars = []
@@ -424,15 +450,36 @@ class RHSBlock(AbstractBlock):
     and an output function
         y = h(x)
     """
-    def __init__(self, f_expr, h_expr, state, insig, name=None):
+    def __init__(self, f_expr, h_expr, local_state, insig, name=None):
         AbstractBlock.__init__(self, name)
 
-        self.state = state
-        self.insig = insig
+        self.local_state = local_state
         self.f_expr = f_expr
         self.h_expr = h_expr
+        self.X = insig
+        self.Y = next(blockoutputs)
+
+        # this will be overwritten by theStateAdmin.register_block(self)
+        self.stateVars = None
+
+        if isinstance(self.local_state, sp.Expr):
+            self.local_state = [self.local_state]
+        elif isinstance(self.local_state, sp.MatrixBase):
+            self.local_state = list(self.local_state)
+        if not isinstance(self.f_expr, sp.MatrixBase):
+            self.f_expr = sp.Matrix([self.f_expr])
+
+        assert len(self.local_state) == self.f_expr.shape[0]
+        self.order = self.f_expr.shape[0]
 
         theStateAdmin.register_block(self)
+
+    def _replace_local_state(self):
+        assert len(self.stateVars) == len(self.local_state)
+
+        self.rplmts = list(zip(self.local_state, self.stateVars))
+        self.f_expr = self.f_expr.subs(self.rplmts)
+        self.h_expr = self.h_expr.subs(self.rplmts)
 
 
 
@@ -661,6 +708,10 @@ def gen_rhs(stateadmin):
         eqn_rhs = stateadmin.get_nil_eq(bl)  # can still contain Yii -vars
         subsdict.update({y: eqn_rhs})
 
+    for y, bl in stateadmin.RHSBlocks.items():
+        bl: "RHSBlock"
+        subsdict.update({y: bl.h_expr})
+
     # handle Blockfncs
     fncs = {}
     for y, bl in stateadmin.Blockfncs.items():
@@ -786,6 +837,8 @@ def compute_block_ouptputs(simresults):
 
         # for each timestep: evaluate the block specific func with the args
         blocks[bl] = tmp = np.array([fnc(*na) for na in zip(*numargs)])
+
+        # check the type of each output (only first element)
         try:
             float(tmp[0])
         except TypeError as e:
@@ -849,7 +902,7 @@ def blocksimulation(tend, inputs=None, xx0=None, dt=5e-3):
     theStateAdmin.setup_DelayBlocks(dt)
     delayblocks = theStateAdmin.DelayBlocks.values()
 
-    # TODO: this should be a separat function
+    # TODO: this should be a separate function
     # the input of a deayblock is a) an system input
     # or b) an other blockoutput
 
