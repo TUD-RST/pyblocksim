@@ -794,9 +794,13 @@ def gen_rhs(stateadmin):
     stateadmin.final_equations = []
     stateadmin.args = args
 
+    # make feedback of static blocks possible
+    subsdict2 = dict(loops)
+    subsdict2.update(subsdict)
+
     # the inputs and parameters are taken from global scope (w.r.t. rhs)
     for eq in stateadmin.dynEqns:
-        eq = eq.subs(subsdict)
+        eq = eq.subs(subsdict2)
         stateadmin.final_equations.append(eq)
         fnc = sp.lambdify(args, eq)
         state_rhs_fncs.append(fnc)
