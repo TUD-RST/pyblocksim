@@ -794,13 +794,15 @@ def gen_rhs(stateadmin):
     stateadmin.final_equations = []
     stateadmin.args = args
 
-    # make feedback of static blocks possible
-    subsdict2 = dict(loops)
-    subsdict2.update(subsdict)
+    # fix some issues with feedback of static loops
+    stateadmin.dynEqns = list(sp.Matrix(
+        theStateAdmin.dynEqns).subs(theStateAdmin.loops)
+    )
+
 
     # the inputs and parameters are taken from global scope (w.r.t. rhs)
     for eq in stateadmin.dynEqns:
-        eq = eq.subs(subsdict2)
+        eq = eq.subs(subsdict)
         stateadmin.final_equations.append(eq)
         fnc = sp.lambdify(args, eq)
         state_rhs_fncs.append(fnc)
