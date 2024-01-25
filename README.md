@@ -64,7 +64,7 @@ should install the package including all examples.
 If something goes wrong, feel free to file an issue or contact the author(s).
 
 ## Getting started
-The recommended entry point ist the `examples`-folder.
+The recommended entry point ist the [`examples`](/examples)-folder.
 *Note*: the examples are not installed with pip and have to be downloaded
  separately.
 
@@ -86,7 +86,7 @@ installed. See also `requirements.txt`.
 ## Documentation
 
 Currently no handwritten documentation exists.
-The examples should be self-explainatory and
+The examples should be self-explanatory and
 cover the whole functionality. Tanking a glance at the source code should
 reveal the internals (at least if the meaning of the terminology can be
 guessed). In the case of questions asking for support is encouraged.
