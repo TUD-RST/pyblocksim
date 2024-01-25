@@ -3,7 +3,7 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Welcome to pyBlockSim's documentation!
+Welcome to pyblocksim's documentation!
 ======================================
 
 Contents:
@@ -11,7 +11,7 @@ Contents:
 .. toctree::
    :maxdepth: 2
    
-   #modules # can be ignored (package only has one module)
+   modules
    pyblocksim
 
 

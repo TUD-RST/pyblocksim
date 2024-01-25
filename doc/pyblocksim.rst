@@ -9,10 +9,10 @@ pyblocksim Package
     :undoc-members:
     :show-inheritance:
 
-:mod:`pyblocksimlib` Module
+:mod:`core` Module
 ---------------------------
 
-.. automodule:: pyblocksim.pyblocksimlib
+.. automodule:: pyblocksim.core
     :members:
     :undoc-members:
     :show-inheritance:
