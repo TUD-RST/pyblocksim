@@ -3,4 +3,5 @@
 doc/_*/*
 .idea/*
 testdata/*
+*/*egg-info/*
 

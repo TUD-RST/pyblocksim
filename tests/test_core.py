@@ -9,8 +9,6 @@ import numpy as np
 import pyblocksim as pbs
 import inspect
 
-# from ipHelp import IPS
-
 
 """
 The main idea of this test suite is to run examples and compare
@@ -27,14 +25,14 @@ the_dir3 = os.path.join(the_dir2, "examples")
 sys.path.append(the_dir3)
 
 test_examples = {
-                 1: 'example1',
-                 2: 'example2',
-                 3: 'example3',
-                 4: 'example4',
-                 5: 'example-hysteresis',
-                 6: 'example06-output-derivative',
-                 7: 'example07-delay',
-                 }
+    1: "example1",
+    2: "example2",
+    3: "example3",
+    4: "example4",
+    5: "example-hysteresis",
+    6: "example06-output-derivative",
+    7: "example07-delay",
+}
 
 
 def get_fname(name):
@@ -88,7 +86,6 @@ def convert_dict_key_to_str(thedict):
 
 
 class TestInternals(unittest.TestCase):
-
     def setUp(self):
         pbs.restart()
 
@@ -107,22 +104,22 @@ class TestInternals(unittest.TestCase):
         srclines = {"core": inspect.getsourcelines(pbs.core)[0]}
         for _, example_name in test_examples.items():
             example_path = os.path.join(the_dir3, example_name)
-            with open(example_path + ".py", 'r') as srcfile:
+            with open(example_path + ".py", "r") as srcfile:
                 src = srcfile.readlines()
             srclines[example_name] = src
 
         unittestfilename = inspect.getsourcefile(type(self))
-        with open(unittestfilename, 'r') as srcfile:
+        with open(unittestfilename, "r") as srcfile:
             src = srcfile.readlines()
-        srclines['unittest'] = src
+        srclines["unittest"] = src
 
         # now determine whether the lines are OK
         def filter_func(tup):
             idx, line = tup
-            if line.strip().startswith('#'):
+            if line.strip().startswith("#"):
                 return False
-            str1 = 'I P S ()'.replace(' ', "")
-            str2 = 'i p H e l p'.replace(' ', "")
+            str1 = "I P S ()".replace(" ", "")
+            str2 = "i p H e l p".replace(" ", "")
             if str1 in line or str2 in line:
                 return True
 
@@ -137,24 +134,23 @@ class TestInternals(unittest.TestCase):
             self.assertEqual(res, [])
 
     def test_blocknames(self):
-
         u1, u2 = pbs.inputs("u1, u2")
-        myblock = pbs.Blockfnc(3*u1)
+        myblock = pbs.Blockfnc(3 * u1)
         s = pbs.s
-        blk2 = pbs.TFBlock((4*s + 2)/((s + 1)*(s + 2)), u1, name=u"äöü")
+        blk2 = pbs.TFBlock((4 * s + 2) / ((s + 1) * (s + 2)), u1, name="äöü")
 
         tmp_block = myblock
         # this should generate a new name
-        myblock = pbs.Blockfnc(3*u1)
+        myblock = pbs.Blockfnc(3 * u1)
         self.assertTrue(myblock.name != tmp_block.name)
 
-        myblock1 = pbs.Blockfnc(3*u1, 'block1')
+        myblock1 = pbs.Blockfnc(3 * u1, "block1")
         # this should generate a warning due to reuse of name 'block1'
         with pbs.warnings.catch_warnings(record=True) as cm:
-            myblock1 = pbs.Blockfnc(3*u1, 'block1')
+            myblock1 = pbs.Blockfnc(3 * u1, "block1")
 
         self.assertEqual(len(cm), 1)
-        self.assertTrue('block1' in str(cm[0].message))
+        self.assertTrue("block1" in str(cm[0].message))
 
     def test_t00_bug(self):
         # bug: blocksimulation returns time array like r_[0, 0, dt, 2*dt, ...]
@@ -169,9 +165,9 @@ class TestInternals(unittest.TestCase):
     def test_t00_bug2(self):
         # inputsignal should be evaluated correctly
 
-        u1, = pbs.inputs('u1')  # external force and feedback
+        (u1,) = pbs.inputs("u1")  # external force and feedback
         meas1 = pbs.Blockfnc(u1)
-        PT1 = pbs.TFBlock(1/(1 + pbs.s), u1)  #
+        PT1 = pbs.TFBlock(1 / (1 + pbs.s), u1)  #
 
         def u1fnc(t):
             if t == 0:
@@ -194,7 +190,6 @@ class TestInternals(unittest.TestCase):
         self.assertEqual(len(list(mod.bo.values())[0].shape), 1)
 
     def test_ringbuffer(self):
-
         bufferlength = 7
         rb = pbs.RingBuffer(bufferlength)
         N = 50
@@ -209,6 +204,7 @@ class TestInternals(unittest.TestCase):
 
         if 0:
             import matplotlib.pyplot as plt
+
             plt.plot(ii, arr_in)
             plt.plot(ii, arr_out)
             plt.show()
@@ -217,7 +213,6 @@ class TestInternals(unittest.TestCase):
 
 
 class TestExamples(unittest.TestCase):
-
     def setUp(self):
         pbs.restart()
         pass
@@ -238,7 +233,7 @@ class TestExamples(unittest.TestCase):
         for k in mod.bo.keys():
             arr = mod.bo[k]
             arr_ref = bo_ref[k]
-            self.assertTrue( all(np.isclose(arr, arr_ref)) )
+            self.assertTrue(all(np.isclose(arr, arr_ref)))
 
     def test_example1(self):
         self.specific_example_test(1)
@@ -261,14 +256,29 @@ class TestExamples(unittest.TestCase):
     def test_example_delay(self):
         self.specific_example_test(7)
 
+    def test_rhs_block(self):
+        (u1,) = pbs.inputs("u1,")
+        s = pbs.s
+        T = 3
+        k = 1
+        PT1_tf = pbs.TFBlock(k / (T * s + 1), u1)  # gain: 1, time constant: 3
 
-if __name__ == '__main__':
+        (x1,) = xx = pbs.sp.symbols("x1:2")
+        PT1_rhs = pbs.RHSBlock(f_expr=1 / T * (-x1 + k * u1), h_expr=x1, local_state=xx, insig=u1)
 
-    if 'generate_data' in sys.argv:
+        u1fnc = pbs.stepfnc(0.5, 1)
+        t, states = pbs.blocksimulation(10, (u1, u1fnc))  # integrate 10 seconds
+        bo = pbs.compute_block_ouptputs(states)
+
+        diff = bo[PT1_tf] - bo[PT1_rhs]
+        np.allclose(bo[PT1_tf], bo[PT1_rhs])
+
+
+if __name__ == "__main__":
+    if "generate_data" in sys.argv:
         for k, v in test_examples.items():
             generate_data(v)
-    elif 'gd07' in sys.argv:
-            generate_data(test_examples[7])
+    elif "gd07" in sys.argv:
+        generate_data(test_examples[7])
     else:
         unittest.main()
-

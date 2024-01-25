@@ -20,6 +20,11 @@ import sympy as sp
 import inspect
 import warnings
 
+# for debugging:
+try:
+    from ipydex import IPS
+except ImportError:
+    pass
 
 
 def mainprint(*args, **kwargs):
@@ -33,22 +38,21 @@ def mainprint(*args, **kwargs):
     """
 
     frame_up = inspect.currentframe().f_back
-    module_name = frame_up.f_globals['__name__']
+    module_name = frame_up.f_globals["__name__"]
     # print("name:", __name__, module_name)
 
-    if module_name == '__main__':
+    if module_name == "__main__":
         print(*args, **kwargs)
 
 
 # The laplace variable
-s = sp.Symbol('s')
+s = sp.Symbol("s")
 
 # The time variable
-t = sp.Symbol('t')
+t = sp.Symbol("t")
 
 
-def numbered_symbols(prefix='x', function=sp.Symbol,
-                                start=0, *args, **assumptions):
+def numbered_symbols(prefix="x", function=sp.Symbol, start=0, *args, **assumptions):
     """
     Generate an infinite stream of Symbols consisting of a prefix and
     increasing subscripts.
@@ -57,13 +61,13 @@ def numbered_symbols(prefix='x', function=sp.Symbol,
     adapted for leading zeros
     """
     while True:
-        name = '%s%02i' % (prefix, start)
+        name = "%s%02i" % (prefix, start)
         yield function(name, *args, **assumptions)
         start += 1
 
 
-blockoutputs = numbered_symbols('Y')
-statevariables = numbered_symbols('SV_')
+blockoutputs = numbered_symbols("Y")
+statevariables = numbered_symbols("SV_")
 
 
 def _get_assingment_name():
@@ -80,23 +84,24 @@ def _get_assingment_name():
     # adapted everytime the class structure changes
     f = inspect.currentframe().f_back.f_back.f_back
 
-    src = inspect.findsource(f)[0][f.f_lineno-1]
+    src = inspect.findsource(f)[0][f.f_lineno - 1]
 
     if not "=" in src:
-        return 'unnamed'
+        return "unnamed"
     else:
         name = src.split("=")[0].strip()
         return name
 
 
 def degree(expr):
-    return sp.Poly(expr,s, domain='EX').degree()
+    return sp.Poly(expr, s, domain="EX").degree()
 
 
 class StateAdmin(object):
     """
     Omniscient object for data bookkeeping
     """
+
     def __init__(self):
         self.dim = 0
         self.auxdim = 0
@@ -110,6 +115,7 @@ class StateAdmin(object):
 
         # use ordered dicts to allow access via name and via index
         self.IBlocks = OrderedDict()
+        self.RHSBlocks = OrderedDict()
         self.NILBlocks = OrderedDict()
         self.Blockfncs = OrderedDict()
         self.DelayBlocks = OrderedDict()
@@ -137,6 +143,8 @@ class StateAdmin(object):
             self._register_TFBlock(block)
         elif isinstance(block, DelayBlock):
             self._register_DelayBlock(block)
+        elif isinstance(block, RHSBlock):
+            self._register_RHSBlock(block)
         else:
             raise TypeError()
 
@@ -147,7 +155,16 @@ class StateAdmin(object):
 
         block.stateadmin = self
         self._register_new_states(block)
-        self._register_dynEqns(block.idcs, block.X, block.expr)
+        self._register_dynEqns(block.idcs, block.X, coeff_expr=block.expr)
+
+    def _register_RHSBlock(self, block: "RHSBlock"):
+        self.RHSBlocks[block.Y] = block
+        self.allBlocks[block.Y] = block
+        self.allBlockNames[block.name] = block
+        block.stateadmin = self
+        self._register_new_states(block)
+        block._replace_local_state()
+        self._register_dynEqns(block.idcs, block.X, rhs_expr=block.f_expr)
 
     def _register_NILBlock(self, block):
         self.NILBlocks[block.Y] = block
@@ -161,7 +178,7 @@ class StateAdmin(object):
 
     def _register_TFBlock(self, block):
         # prevent the meta block from overwriting the numerator Block
-        Y = sp.Symbol(block.Y.name+'meta')
+        Y = sp.Symbol(block.Y.name + "meta")
         self.allBlocks[Y] = block
         self.allBlockNames[block.name] = block
         self.metaBlocks[block.Y] = block
@@ -189,7 +206,7 @@ class StateAdmin(object):
         This method is also used for pseudo states (delay blocks)
         """
         # let the block know which indices belong to it
-        block.idcs = list(range(self.dim, self.dim+block.order))
+        block.idcs = list(range(self.dim, self.dim + block.order))
         self.dim += block.order
 
         block.stateVars = [next(statevariables) for i in block.idcs]
@@ -197,9 +214,9 @@ class StateAdmin(object):
 
     def _register_new_auxSignal(self):
         self.auxdim += 1
-        return self.auxdim-1
+        return self.auxdim - 1
 
-    def _register_dynEqns(self, idcs, insig, expr):
+    def _register_dynEqns(self, idcs, insig, coeff_expr=None, rhs_expr=None):
         """
 
         :param idcs:    indices w.r.t the overall state vector
@@ -207,30 +224,47 @@ class StateAdmin(object):
         :param expr:    denominator expression (like s**2 + 3s - 2)
         :return:
         """
-        coeffs = expr2coeffs(expr)
-        order = degree(expr)
 
-        assert not order == 0
-
-        self.dynEqns.extend([None]*len(idcs))
+        self.dynEqns.extend([None] * len(idcs))
 
         # the following requires that the respective state vars have already been created and
         # are stored in self.statevars
 
+        if coeff_expr is not None:
+            assert rhs_expr is None
+            coeffs = expr2coeffs(coeff_expr)
+            order = degree(coeff_expr)
+
+            assert order != 0
+            self.__insert_dynEqns_from_coeffs(idcs, coeffs, insig)
+        else:
+            assert isinstance(rhs_expr, sp.MatrixBase)
+            order = rhs_expr.shape[0]
+            assert order != 0
+            self.__insert_dynEqns_from_rhs_expr(idcs, rhs_expr, insig)
+
+    def __insert_dynEqns_from_rhs_expr(self, idcs, rhs_expr, insig):
+        assert isinstance(rhs_expr, sp.MatrixBase)
+        assert rhs_expr.shape == (len(idcs), 1)
+
+        for idx in idcs:
+            i = idx - idcs[0]  # idx is overal index, i is local index
+            self.dynEqns[idx] = rhs_expr[i, 0]
+
+    def __insert_dynEqns_from_coeffs(self, idcs, coeffs, insig):
         # handle integrator chains like xdot1 = x2
         tmpVars = []
         for i in idcs[0:-1]:
-            tmpVars.append(self.stateVars[i+1])
+            tmpVars.append(self.stateVars[i + 1])
             self.dynEqns[i] = tmpVars[-1]
 
         # create the last line of the controller canonical form
         tmpVars.insert(0, self.stateVars[idcs[0]])
-        inputeqn = sum([-c*v for c, v in zip(coeffs[:-1], tmpVars) ]) + insig
+        inputeqn = sum([-c * v for c, v in zip(coeffs[:-1], tmpVars)]) + insig
         self.dynEqns[idcs[-1]] = inputeqn
 
     def register_inputs(self, namestr):
-
-        res = sp.symbols(namestr) # returns one symbol or a tuple of symbols
+        res = sp.symbols(namestr)  # returns one symbol or a tuple of symbols
 
         if isinstance(res, sp.Symbol):
             res = [res]
@@ -244,7 +278,7 @@ class StateAdmin(object):
         assert output in self.allBlocks or output in self.stateVars
         assert input_to_be_replaced in self.inputs
 
-        self.loops.update({input_to_be_replaced : output})
+        self.loops.update({input_to_be_replaced: output})
 
     def get_nil_eq(self, nilblock):
         """
@@ -265,8 +299,7 @@ class StateAdmin(object):
         # n = len(nilblock.coeffs)-1
 
         # coeffs are sorted like this: [a_0, ..., a_n]
-        tmplist = [c*prevblock.requestDeriv(i)
-                                for i, c in enumerate(nilblock.coeffs)]
+        tmplist = [c * prevblock.requestDeriv(i) for i, c in enumerate(nilblock.coeffs)]
 
         formula = sum(tmplist)
 
@@ -302,12 +335,13 @@ class StateAdmin(object):
         # buffer length
         for key, block in self.DelayBlocks.items():
             block._setup(dt)
+
+
 # End of class StateAdmin
 
 
 def expr2coeffs(expr, lead_test=True):
-    """ returns a list of the coeffs (highest last)
-    """
+    """returns a list of the coeffs (highest last)"""
 
     # coeffs = sp.Poly(expr, s).coeffs # -> only non-zero coeffs
     p = sp.Poly(expr, s, domain="EX")
@@ -317,7 +351,7 @@ def expr2coeffs(expr, lead_test=True):
     # -> coeffs = np.array(map(float, coeffs))[::-1]
 
     c_dict = p.as_dict()
-    coeffs = [c_dict.get((i,), 0) for i in range(p.degree()+1)]
+    coeffs = [c_dict.get((i,), 0) for i in range(p.degree() + 1)]
     # convert to np array
     coeffs = np.array(list(map(float, coeffs)))
 
@@ -328,7 +362,6 @@ def expr2coeffs(expr, lead_test=True):
 
 
 class AbstractBlock(object):
-
     def __init__(self, name):
         if name is None:
             name_candidate = _get_assingment_name()
@@ -337,8 +370,7 @@ class AbstractBlock(object):
                 raise TypeError("invalid block name")
             name_candidate = name
             if name_candidate in theStateAdmin.allBlockNames:
-                msg = "Warning: explicitly given block name '{0}' already exists. "\
-                      "It will be renamed."
+                msg = "Warning: explicitly given block name '{0}' already exists. " "It will be renamed."
                 warnings.warn(msg.format(name))
 
         tmp_name = name_candidate
@@ -349,7 +381,7 @@ class AbstractBlock(object):
         self.name = tmp_name
 
     def __repr__(self):
-        return type(self).__name__+':'+self.name
+        return type(self).__name__ + ":" + self.name
 
     # TODO: This method has not yet fully been testet
     def connect_new_input(self, insig_new):
@@ -357,12 +389,12 @@ class AbstractBlock(object):
         Allows to reconfigure the network, e.g. to study the
         consequences of different topology. Use with care.
         """
-        assert hasattr(self, 'X')
+        assert hasattr(self, "X")
         assert self.X is not None
 
         self.X = insig_new
 
-        if hasattr(self, 'denomBlock'):
+        if hasattr(self, "denomBlock"):
             self.denomBlock.connect_new_input(insig_new)
 
 
@@ -370,7 +402,8 @@ class IBlock(AbstractBlock):
     """
     Integrating block
     """
-    def __init__(self, expr, insig, name = None):
+
+    def __init__(self, expr, insig, name=None):
         """
         expr ... the denominator expr. (a sympy polynomial)
         """
@@ -400,8 +433,49 @@ class IBlock(AbstractBlock):
             return self.stateadmin.dynEqns[self.idcs[-1]]
 
         else:
-            raise NotImplementedError("derivative propagation not yet " \
-                                       "supported")
+            raise NotImplementedError("derivative propagation not yet " "supported")
+
+
+class RHSBlock(AbstractBlock):
+    """
+    Block that models a (nonlinear) system described via rhs vector field (expression)
+
+        x_dot = f(x, u)  # x: state, u: input
+
+    and an output function
+        y = h(x)
+    """
+
+    def __init__(self, f_expr, h_expr, local_state, insig, name=None):
+        AbstractBlock.__init__(self, name)
+
+        self.local_state = local_state
+        self.f_expr = f_expr
+        self.h_expr = h_expr
+        self.X = insig
+        self.Y = next(blockoutputs)
+
+        # this will be overwritten by theStateAdmin.register_block(self)
+        self.stateVars = None
+
+        if isinstance(self.local_state, sp.Expr):
+            self.local_state = [self.local_state]
+        elif isinstance(self.local_state, sp.MatrixBase):
+            self.local_state = list(self.local_state)
+        if not isinstance(self.f_expr, sp.MatrixBase):
+            self.f_expr = sp.Matrix([self.f_expr])
+
+        assert len(self.local_state) == self.f_expr.shape[0]
+        self.order = self.f_expr.shape[0]
+
+        theStateAdmin.register_block(self)
+
+    def _replace_local_state(self):
+        assert len(self.stateVars) == len(self.local_state)
+
+        self.rplmts = list(zip(self.local_state, self.stateVars))
+        self.f_expr = self.f_expr.subs(self.rplmts)
+        self.h_expr = self.h_expr.subs(self.rplmts)
 
 
 # TODO: should be renamed to RTFBlock (due to rational TF)
@@ -412,7 +486,6 @@ class TFBlock(AbstractBlock):
     """
 
     def __init__(self, expr, insig, name=None):
-
         AbstractBlock.__init__(self, name)
 
         num, denom = expr.as_numer_denom()
@@ -433,8 +506,8 @@ class TFBlock(AbstractBlock):
             # self.numBlock = NILBlock(num, insig, name+'_num')
             self.numBlock = Blockfnc(num * insig)
         else:
-            self.denomBlock = IBlock(denom, insig, self.name+'_denom')
-            self.numBlock = NILBlock(num, self.denomBlock.Y, self.name+'_num')
+            self.denomBlock = IBlock(denom, insig, self.name + "_denom")
+            self.numBlock = NILBlock(num, self.denomBlock.Y, self.name + "_num")
 
         self.X = insig
         self.Y = self.numBlock.Y
@@ -454,8 +527,7 @@ class TFBlock(AbstractBlock):
 
         assert int(order) == order
         if order > self.relative_degree:
-            msg = "Output derivative order must not be greater " \
-                  "than relative degree."
+            msg = "Output derivative order must not be greater " "than relative degree."
             raise ValueError(msg)
 
         if order == 0:
@@ -466,8 +538,8 @@ class TFBlock(AbstractBlock):
 
         # Now we have to create a new NILBlock for the new numerator
 
-        block_name = self.name+'_num_d' + str(order)
-        new_numerator = NILBlock(self.num*s**order, self.denomBlock.Y, block_name)
+        block_name = self.name + "_num_d" + str(order)
+        new_numerator = NILBlock(self.num * s**order, self.denomBlock.Y, block_name)
         self.output_deriv_cache[order] = new_numerator
         return new_numerator.Y
 
@@ -476,7 +548,8 @@ class NILBlock(AbstractBlock):
     """
     Non-Integrating Linear Block (we call it NIL-Block)
     """
-    def __init__(self, expr, insig, name = None):
+
+    def __init__(self, expr, insig, name=None):
         """
         expr ... the denominator expr. (a sympy polynomial)
         """
@@ -486,7 +559,7 @@ class NILBlock(AbstractBlock):
         AbstractBlock.__init__(self, name)
 
         self.coeffs = expr2coeffs(expr, False)
-        self.order = sp.Poly(expr, s, domain='EX').degree()
+        self.order = sp.Poly(expr, s, domain="EX").degree()
 
         theStateAdmin.register_block(self)
 
@@ -506,8 +579,7 @@ class Blockfnc(AbstractBlock):
 
         AbstractBlock.__init__(self, name)
 
-        tmpList = list(theStateAdmin.allBlocks.keys()) + theStateAdmin.inputs + \
-                    theStateAdmin.stateVars
+        tmpList = list(theStateAdmin.allBlocks.keys()) + theStateAdmin.inputs + theStateAdmin.stateVars
         assert all([sy in tmpList for sy in symbs])
 
         self.Y = next(blockoutputs)
@@ -518,7 +590,6 @@ class Blockfnc(AbstractBlock):
 
 
 class DelayBlock(AbstractBlock):
-
     def __init__(self, T, insig, ivalue=None, name=None):
         """
         :param T:       delaytime
@@ -604,6 +675,7 @@ def exceptionwrapper(fnc):
             return fnc(*args, **kwargs)
         except Exception as e:
             import traceback
+
             traceback.print_exc()
             sys.exit(1)
 
@@ -628,6 +700,10 @@ def gen_rhs(stateadmin):
     for y, bl in stateadmin.NILBlocks.items():
         eqn_rhs = stateadmin.get_nil_eq(bl)  # can still contain Yii -vars
         subsdict.update({y: eqn_rhs})
+
+    for y, bl in stateadmin.RHSBlocks.items():
+        bl: "RHSBlock"
+        subsdict.update({y: bl.h_expr})
 
     # handle Blockfncs
     fncs = {}
@@ -665,7 +741,7 @@ def gen_rhs(stateadmin):
                 subsdict.pop(y)
             else:
                 # not ready yet, but maybe next round
-                subsdict[y] = expr # update the subsdict
+                subsdict[y] = expr  # update the subsdict
 
         assert len(subsdict) < L or L == 0
         if subsdict == {}:
@@ -686,11 +762,11 @@ def gen_rhs(stateadmin):
     # so we ensure that there is at least one integrator in the loop
     L = set(loops).intersection(stateadmin.Blockfncs)
     if not L == set():
-        raise ValueError('Algebraic loop found (maybe): '+str(L))
+        raise ValueError("Algebraic loop found (maybe): " + str(L))
 
     for u, expr in loops.items():
         if expr.atoms().intersection(stateadmin.allBlocks) != set():
-            raise ValueError('unsubstituted expr found: %s=%s' %(u, expr))
+            raise ValueError("unsubstituted expr found: %s=%s" % (u, expr))
 
     for y, expr in subsdict.items():
         subsdict[y] = expr.subs(loops)
@@ -698,18 +774,20 @@ def gen_rhs(stateadmin):
     # we do not need them anymore
     # remove them to avoid confusion
     # but this cause problems if the gen_rhs is called more than once
-#    for u in loops:
-#        theStateAdmin.inputs.remove(u)
+    #    for u in loops:
+    #        theStateAdmin.inputs.remove(u)
 
     # save the relations for later use
     stateadmin.blockoutdict = subsdict
 
-    args = stateadmin.stateVars + stateadmin.inputs +\
-           stateadmin.delayblockoutputs
+    args = stateadmin.stateVars + stateadmin.inputs + stateadmin.delayblockoutputs
 
     state_rhs_fncs = []
     stateadmin.final_equations = []
     stateadmin.args = args
+
+    # fix some issues with feedback of static loops
+    stateadmin.dynEqns = list(sp.Matrix(theStateAdmin.dynEqns).subs(theStateAdmin.loops))
 
     # the inputs and parameters are taken from global scope (w.r.t. rhs)
     for eq in stateadmin.dynEqns:
@@ -718,9 +796,8 @@ def gen_rhs(stateadmin):
         fnc = sp.lambdify(args, eq)
         state_rhs_fncs.append(fnc)
 
-
     def rhs(z, t, *addargs):
-        fncargs = list(z)+list(addargs)
+        fncargs = list(z) + list(addargs)
         dz = [fnc(*fncargs) for fnc in state_rhs_fncs]
         return dz
 
@@ -728,7 +805,6 @@ def gen_rhs(stateadmin):
 
 
 def compute_block_ouptputs(simresults):
-
     args = theStateAdmin.stateVars + theStateAdmin.inputs
     assert simresults.shape[1] == len(args)
 
@@ -744,7 +820,6 @@ def compute_block_ouptputs(simresults):
             raise ValueError("This set should be empty: ", to_be_empty)
 
     for bl in list(theStateAdmin.allBlocks.values()):
-
         y = bl.Y
         # the fnc for calculationg the blockoutput from states
         fnc = sp.lambdify(args, y.subs(theStateAdmin.blockoutdict))
@@ -754,12 +829,14 @@ def compute_block_ouptputs(simresults):
 
         # for each timestep: evaluate the block specific func with the args
         blocks[bl] = tmp = np.array([fnc(*na) for na in zip(*numargs)])
+
+        # check the type of each output (only first element)
         try:
             float(tmp[0])
         except TypeError as e:
             tp = type(tmp[0])
             msg = "Invalid type ({}) while computing output of block: {}.".format(tp, bl.name)
-            e.args = (msg, )
+            e.args = (msg,)
             raise
 
     return blocks
@@ -778,7 +855,7 @@ def blocksimulation(tend, inputs=None, xx0=None, dt=5e-3):
     """
 
     if xx0 is None:
-        xx0 = [0]*theStateAdmin.dim
+        xx0 = [0] * theStateAdmin.dim
 
     assert len(xx0) == theStateAdmin.dim
 
@@ -790,8 +867,7 @@ def blocksimulation(tend, inputs=None, xx0=None, dt=5e-3):
         inputs = {}
 
     # shortcut for 2-tuple of the form (u1, u1fnc)
-    elif hasattr(inputs, '__len__') and len(inputs) == 2 and\
-                                    not hasattr(inputs[0], '__len__'):
+    elif hasattr(inputs, "__len__") and len(inputs) == 2 and not hasattr(inputs[0], "__len__"):
         inputs = dict([inputs])
     else:
         msg = "invalid type for input: " + str(input)
@@ -817,7 +893,7 @@ def blocksimulation(tend, inputs=None, xx0=None, dt=5e-3):
     theStateAdmin.setup_DelayBlocks(dt)
     delayblocks = theStateAdmin.DelayBlocks.values()
 
-    # TODO: this should be a separat function
+    # TODO: this should be a separate function
     # the input of a deayblock is a) an system input
     # or b) an other blockoutput
 
@@ -857,7 +933,7 @@ def blocksimulation(tend, inputs=None, xx0=None, dt=5e-3):
 
         # calculate the next values
         addargs = tuple(u_vect) + tuple(d_vect)
-        x_vect = integrate.odeint(rhs, x_vect, r_[t, t+dt], addargs)
+        x_vect = integrate.odeint(rhs, x_vect, r_[t, t + dt], addargs)
         x_vect = x_vect[-1, :]
 
         # save the value of delay block in the corresponding pseudo state
@@ -892,7 +968,7 @@ def get_linear_ct_model(stateadmin, system_output):
 
     sys_eqns = sp.Matrix(stateadmin.final_equations)
     xx = sp.Matrix(stateadmin.stateVars)
-    uu = sp.Matrix([u for u  in stateadmin.inputs if u not in theStateAdmin.loops])
+    uu = sp.Matrix([u for u in stateadmin.inputs if u not in theStateAdmin.loops])
 
     # symbolic matrices
     As = sys_eqns.jacobian(xx)
@@ -915,8 +991,7 @@ def get_linear_ct_model(stateadmin, system_output):
     return A, B, C, D
 
 
-
-def stepfnc(tup, amp1=1, tdown = np.inf, amp0=0):
+def stepfnc(tup, amp1=1, tdown=np.inf, amp0=0):
     """
     returns a callable of 1 arg which is a step function
     """
@@ -928,9 +1003,9 @@ def stepfnc(tup, amp1=1, tdown = np.inf, amp0=0):
     assert tdown > tup
 
     def fnc(t):
-        if t < tup :
+        if t < tup:
             u = amp0
-        elif t < tdown :
+        elif t < tdown:
             u = amp1
         else:
             u = amp0
@@ -951,13 +1026,13 @@ class Trajectory(object):
         assert self.expr.atoms(sp.Symbol) == set([t])
         assert int(self.sd) == self.sd
 
-        for i in range(self.sd+1):
-            self.derivatives.append( self.expr.diff(t, i) )
+        for i in range(self.sd + 1):
+            self.derivatives.append(self.expr.diff(t, i))
 
     def _make_fnc(self, expr, var=None):
         if var is None:
             var = t
-        return sp.lambdify( (var,), expr, modules='numpy' )
+        return sp.lambdify((var,), expr, modules="numpy")
 
     def get_trajectory(self, diff_idx=0):
         assert diff_idx <= self.sd  # smoothness_degree
@@ -965,7 +1040,7 @@ class Trajectory(object):
         return fnc
 
     def combined_trajectories(self, expr):
-        """ expects expr to be a polynomial in s which determines
+        """expects expr to be a polynomial in s which determines
         how to linearily combine the trajectory
         and its derivatives to a new function of time
 
@@ -979,7 +1054,7 @@ class Trajectory(object):
 
         res = 0
         for i, c in enumerate(coeffs):
-            res += c*self.derivatives[i]
+            res += c * self.derivatives[i]
 
         return self._make_fnc(res)
 
@@ -995,11 +1070,12 @@ def restart():
     """
     theStateAdmin.__init__()
 
+
 # global variables
 theStateAdmin = StateAdmin()
 loop = theStateAdmin.register_loop
 inputs = theStateAdmin.register_inputs
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
