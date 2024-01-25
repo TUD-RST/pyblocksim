@@ -1,4 +1,7 @@
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![PyPI version](https://badge.fury.io/py/pyblocksim.svg)](https://badge.fury.io/py/pyblocksim)
+![ci](https://github.com/TUD-RST/pyblocksim/actions/workflows/python-app.yml/badge.svg)
+
 
 ## GENERAL INFORMATION
 
@@ -10,7 +13,7 @@ directed interconnection of blocks such as transfer functions.
 
 pyblocksim provides a framework for:
 
-- easily describing blocks and their interconnections (including explicit feedback)
+- describing blocks and their interconnections (including explicit feedback) as compact source code
 - converting the whole model into a state space form
 - passing it to the numerical integrator of scipy
 - easily accessing the simulation results
@@ -37,7 +40,7 @@ The following features should be possible to be implemented
 -  representation of (linear and nonlinear) systems in state space
 -  graphical visualization of the blocks and their interconnections
   (for visual model checking)
--  things like nyquist and bode plots
+-  things like Nyquist and bode plots
 - a module for controller/observer design
 
 HINT:
