@@ -11,10 +11,27 @@ try:
     import sympy as sp
     import pylab as pl
 
-    from .core import s, t, TFBlock, Blockfnc, compute_block_ouptputs,\
-                        theStateAdmin, blocksimulation, stepfnc, loop,\
-                        inputs, Trajectory, mainprint, sys, restart, warnings,\
-                        RingBuffer, DelayBlock, get_linear_ct_model, RHSBlock
+    from .core import (
+        s,
+        t,
+        TFBlock,
+        Blockfnc,
+        compute_block_ouptputs,
+        theStateAdmin,
+        blocksimulation,
+        stepfnc,
+        loop,
+        inputs,
+        Trajectory,
+        mainprint,
+        sys,
+        restart,
+        warnings,
+        RingBuffer,
+        DelayBlock,
+        get_linear_ct_model,
+        RHSBlock,
+    )
 
 except ImportError:
     # this might be relevant during the installation process
