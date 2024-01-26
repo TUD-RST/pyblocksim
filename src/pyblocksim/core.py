@@ -637,6 +637,14 @@ class DelayBlock(AbstractBlock):
         return self.rb.write_and_step(input_value)
 
 
+class HyperBlock(AbstractBlock):
+    """
+    Class for blocks that consist of other blocks
+    """
+    pass
+
+
+
 class RingBuffer(object):
     """
     data structure for saving the internal state of a delay block
