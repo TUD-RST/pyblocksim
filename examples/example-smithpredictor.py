@@ -82,7 +82,7 @@ u1fnc = stepfnc(0.7, 1)
 
 t, states = blocksimulation(4, (u1, u1fnc))  # integrate
 
-bo = compute_block_ouptputs(states)
+bo = compute_block_outputs(states)
 
 if __name__ == "__main__":
     pl.figure()

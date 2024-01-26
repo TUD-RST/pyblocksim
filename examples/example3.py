@@ -30,7 +30,7 @@ u1fnc = stepfnc(2, 1)
 
 t, states = blocksimulation(10, (u1, u1fnc))  # simulate 10 seconds
 
-bo = compute_block_ouptputs(states)
+bo = compute_block_outputs(states)
 
 # an undamped nonlinear oscillation takes place:
 

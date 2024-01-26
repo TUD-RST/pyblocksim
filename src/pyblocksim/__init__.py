@@ -16,7 +16,7 @@ try:
         t,
         TFBlock,
         Blockfnc,
-        compute_block_ouptputs,
+        compute_block_outputs,
         theStateAdmin,
         blocksimulation,
         stepfnc,
@@ -32,6 +32,9 @@ try:
         get_linear_ct_model,
         RHSBlock,
     )
+
+    # maintain backward compatibility after fixing typo
+    compute_block_ouptputs = compute_block_outputs
 
 except ImportError:
     # this might be relevant during the installation process

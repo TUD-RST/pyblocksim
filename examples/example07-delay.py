@@ -23,7 +23,7 @@ u1fnc = stepfnc(0.7, 1)
 
 t, states = blocksimulation(10, (u1, u1fnc))  # integrate 10 seconds
 
-bo = compute_block_ouptputs(states)
+bo = compute_block_outputs(states)
 
 if __name__ == "__main__":
     pl.plot(t, bo[PT1a])

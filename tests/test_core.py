@@ -177,7 +177,7 @@ class TestInternals(unittest.TestCase):
 
         t, states = pbs.blocksimulation(1, (u1, u1fnc))  # simulate 10 seconds
 
-        bo = pbs.compute_block_ouptputs(states)
+        bo = pbs.compute_block_outputs(states)
         uu1 = bo[meas1]
         self.assertEqual(uu1[0], 0)
         self.assertEqual(uu1[1], 1)
@@ -268,7 +268,7 @@ class TestExamples(unittest.TestCase):
 
         u1fnc = pbs.stepfnc(0.5, 1)
         t, states = pbs.blocksimulation(10, (u1, u1fnc))  # integrate 10 seconds
-        bo = pbs.compute_block_ouptputs(states)
+        bo = pbs.compute_block_outputs(states)
 
         diff = bo[PT1_tf] - bo[PT1_rhs]
         np.allclose(bo[PT1_tf], bo[PT1_rhs])

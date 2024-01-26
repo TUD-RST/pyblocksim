@@ -53,7 +53,7 @@ u_traj_fnc = traj.combined_trajectories((s**2 - 2 * s + 2) * (s + 5))
 t, states = blocksimulation(10, {u_traj: u_traj_fnc, y_ref: y_ref_fnc})  # simulate 10 seconds
 t = t.flatten()
 
-bo = compute_block_ouptputs(states)
+bo = compute_block_outputs(states)
 
 
 if __name__ == "__main__":

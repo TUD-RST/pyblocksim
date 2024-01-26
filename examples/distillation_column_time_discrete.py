@@ -67,7 +67,7 @@ thestep = stepfnc(1.0, 1)
 
 tt, states = blocksimulation(40, (w, thestep), dt=0.05)
 
-bo = compute_block_ouptputs(states)
+bo = compute_block_outputs(states)
 
 
 # #### additional code for comparision

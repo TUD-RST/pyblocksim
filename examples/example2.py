@@ -59,7 +59,7 @@ thestep = stepfnc(1.0, 1)
 
 t, states = blocksimulation(40, (w, thestep), dt=0.05)
 
-bo = compute_block_ouptputs(states)
+bo = compute_block_outputs(states)
 
 if __name__ == "__main__":
     pl.plot(t, bo[SUM1])
