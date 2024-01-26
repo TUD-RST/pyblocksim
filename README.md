@@ -92,7 +92,7 @@ cover the whole functionality. Tanking a glance at the source code should
 reveal the internals (at least if the meaning of the terminology can be
 guessed). In the case of questions asking for support is encouraged.
 
-There is also a the directory [`doc/notebooks`](/doc/notebooks).
+There is also a the directory [`docs/notebooks`](/docs/notebooks).
 
 
 ## License
