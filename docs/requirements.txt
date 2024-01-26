@@ -1,0 +1,6 @@
+# requirements for editing the docs. Install rst-to-myst[sphinx] first, then install requirements.txt
+# rst-to-myst[sphinx]
+sphinx
+myst-parser
+sphinx_rtd_theme
+sphinx-argparse

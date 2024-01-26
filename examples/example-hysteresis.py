@@ -96,7 +96,7 @@ def input_ramps(t):
 tt, states = blocksimulation(25, {hyst_in: input_ramps})  # simulate
 tt = tt.flatten()
 
-bo = compute_block_ouptputs(states)
+bo = compute_block_outputs(states)
 
 
 input_signal = [input_ramps(t) for t in tt]

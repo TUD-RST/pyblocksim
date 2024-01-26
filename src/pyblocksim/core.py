@@ -33,7 +33,7 @@ def mainprint(*args, **kwargs):
     only executed if the calling module is the main module.
 
     This is relevant to the examples which are imported as modules in the
-    unittest script where we dont want all the output which is generated,
+    unittest script where we don't want all the output which is generated,
     by the actual example
     """
 
@@ -45,7 +45,7 @@ def mainprint(*args, **kwargs):
         print(*args, **kwargs)
 
 
-# The laplace variable
+# The Laplace variable
 s = sp.Symbol("s")
 
 # The time variable
@@ -70,7 +70,7 @@ blockoutputs = numbered_symbols("Y")
 statevariables = numbered_symbols("SV_")
 
 
-def _get_assingment_name():
+def _get_assignment_name():
     """
     Supposed to be called in the __init__ of Blocks
 
@@ -81,7 +81,7 @@ def _get_assingment_name():
     """
 
     # this is far from elegant and will need to be
-    # adapted everytime the class structure changes
+    # adapted every time the class structure changes
     f = inspect.currentframe().f_back.f_back.f_back
 
     src = inspect.findsource(f)[0][f.f_lineno - 1]
@@ -248,7 +248,7 @@ class StateAdmin(object):
         assert rhs_expr.shape == (len(idcs), 1)
 
         for idx in idcs:
-            i = idx - idcs[0]  # idx is overal index, i is local index
+            i = idx - idcs[0]  # idx is overall index, i is local index
             self.dynEqns[idx] = rhs_expr[i, 0]
 
     def __insert_dynEqns_from_coeffs(self, idcs, coeffs, insig):
@@ -307,8 +307,8 @@ class StateAdmin(object):
 
     def resolve_blockfnc(self, bf, subsdict):
         """
-        go down the algebraic chain to substitue for all other algebraic
-        iterim results
+        go down the algebraic chain to substitute for all other algebraic
+        interim results
 
         subsdict is supposed to contain the mapping from the block outputs
         of IBlocks and NILBlocks to the state variables
@@ -364,7 +364,7 @@ def expr2coeffs(expr, lead_test=True):
 class AbstractBlock(object):
     def __init__(self, name):
         if name is None:
-            name_candidate = _get_assingment_name()
+            name_candidate = _get_assignment_name()
         else:
             if not isinstance(name, string_types):
                 raise TypeError("invalid block name")
@@ -592,7 +592,7 @@ class Blockfnc(AbstractBlock):
 class DelayBlock(AbstractBlock):
     def __init__(self, T, insig, ivalue=None, name=None):
         """
-        :param T:       delaytime
+        :param T:       delay time
         :param insig:   input signal of the block
         :param ivalue   initial value (array or function);
                         not yet supported
@@ -608,12 +608,12 @@ class DelayBlock(AbstractBlock):
 
         # There will be one pseudo state to store the output of this block
         self.order = 1
-        # this will be lenght-1-sequences after registration
+        # this will be length-1-sequences after registration
         self.idcs = None
         self.stateVars = None
 
         self.input_value_fnc = None
-        # this will be the ringbuffer
+        # this will be the ring buffer
         self.rb = None
 
         if ivalue is not None:
@@ -637,13 +637,21 @@ class DelayBlock(AbstractBlock):
         return self.rb.write_and_step(input_value)
 
 
+class HyperBlock(AbstractBlock):
+    """
+    Class for blocks that consist of other blocks
+    """
+    pass
+
+
+
 class RingBuffer(object):
     """
     data structure for saving the internal state of a delay block
     """
 
     def __init__(self, length):
-        self._storrage = np.zeros(length)
+        self._storage = np.zeros(length)
         self._length = length
         self._idx = 0
         self._flag_read = False
@@ -651,7 +659,7 @@ class RingBuffer(object):
     def read(self):
         assert not self._flag_read
         self._flag_read = True
-        return self._storrage[self._idx]
+        return self._storage[self._idx]
 
     def write_and_step(self, value):
         assert np.allclose(np.float64(value), value)
@@ -659,7 +667,7 @@ class RingBuffer(object):
         # ensure we already read the value
         assert self._flag_read
 
-        self._storrage[self._idx] = value
+        self._storage[self._idx] = value
         self._idx = (self._idx + 1) % self._length
         self._flag_read = False
 
@@ -804,7 +812,7 @@ def gen_rhs(stateadmin):
     return exceptionwrapper(rhs)
 
 
-def compute_block_ouptputs(simresults):
+def compute_block_outputs(simresults):
     args = theStateAdmin.stateVars + theStateAdmin.inputs
     assert simresults.shape[1] == len(args)
 
@@ -821,13 +829,13 @@ def compute_block_ouptputs(simresults):
 
     for bl in list(theStateAdmin.allBlocks.values()):
         y = bl.Y
-        # the fnc for calculationg the blockoutput from states
+        # the fnc for calculating the blockoutput from states
         fnc = sp.lambdify(args, y.subs(theStateAdmin.blockoutdict))
 
         numargs = list(simresults.T)
         # -> list of N 1d-arrays, N=number(statevars)+number(inputs)
 
-        # for each timestep: evaluate the block specific func with the args
+        # for each time step: evaluate the block specific func with the args
         blocks[bl] = tmp = np.array([fnc(*na) for na in zip(*numargs)])
 
         # check the type of each output (only first element)
@@ -894,7 +902,7 @@ def blocksimulation(tend, inputs=None, xx0=None, dt=5e-3):
     delayblocks = theStateAdmin.DelayBlocks.values()
 
     # TODO: this should be a separate function
-    # the input of a deayblock is a) an system input
+    # the input of a delay block is a) an system input
     # or b) an other blockoutput
 
     # will be a list of tuples:
@@ -1041,12 +1049,12 @@ class Trajectory(object):
 
     def combined_trajectories(self, expr):
         """expects expr to be a polynomial in s which determines
-        how to linearily combine the trajectory
+        how to linearly combine the trajectory
         and its derivatives to a new function of time
 
         Example : expr = s**2 -3*s + 5 means
 
-        return a fuction consisting of y_ddot - 3*y_dot + 5*y
+        return a function consisting of y_ddot - 3*y_dot + 5*y
 
         """
 

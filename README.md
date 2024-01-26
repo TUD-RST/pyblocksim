@@ -1,6 +1,7 @@
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![PyPI version](https://badge.fury.io/py/pyblocksim.svg)](https://badge.fury.io/py/pyblocksim)
 ![ci](https://github.com/TUD-RST/pyblocksim/actions/workflows/python-app.yml/badge.svg)
+[![read the docs](https://readthedocs.org/projects/pyblocksim/badge/?version=main)](http://pyblocksim.readthedocs.io/)
 
 
 ## GENERAL INFORMATION
@@ -85,11 +86,13 @@ installed. See also `requirements.txt`.
 
 ## Documentation
 
-Currently no handwritten documentation exists.
+Currently handwritten documentation is outdated.
 The examples should be self-explanatory and
 cover the whole functionality. Tanking a glance at the source code should
 reveal the internals (at least if the meaning of the terminology can be
 guessed). In the case of questions asking for support is encouraged.
+
+There is also a the directory [`docs/notebooks`](/docs/notebooks).
 
 
 ## License

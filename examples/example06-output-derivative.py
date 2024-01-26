@@ -35,7 +35,7 @@ u2fnc = stepfnc(0.55, 1)
 
 t, states = blocksimulation(10, {u1: u1fnc, u2: u2fnc})  # integrate 10 seconds
 
-bo = compute_block_ouptputs(states)
+bo = compute_block_outputs(states)
 
 if __name__ == "__main__":
     pl.plot(t, bo[TF1], "b-", lw=4)

@@ -60,7 +60,7 @@ w1fnc_v = np.vectorize(w1fnc)
 
 tt, states = blocksimulation(3, (w1, w1fnc))  # simulate
 
-bo = compute_block_ouptputs(states)
+bo = compute_block_outputs(states)
 
 
 pl.rc("text", usetex=True)
