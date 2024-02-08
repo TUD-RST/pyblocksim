@@ -31,6 +31,7 @@ try:
         DelayBlock,
         get_linear_ct_model,
         RHSBlock,
+        HyperBlock,
     )
 
     # maintain backward compatibility after fixing typo
