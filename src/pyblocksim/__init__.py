@@ -33,6 +33,7 @@ try:
         RHSBlock,
         HyperBlock,
     )
+    from . import td
 
     # maintain backward compatibility after fixing typo
     compute_block_ouptputs = compute_block_outputs

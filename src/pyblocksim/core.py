@@ -20,6 +20,8 @@ import sympy as sp
 import inspect
 import warnings
 
+from . import td
+
 # for debugging:
 try:
     from ipydex import IPS
@@ -1077,6 +1079,9 @@ def restart():
     Forget about all blocks and states. This is useful for unittests
     """
     theStateAdmin.__init__()
+
+    # reset the time discrete module
+    td.ds.initialize()
 
 
 # global variables
