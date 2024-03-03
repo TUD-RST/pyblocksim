@@ -55,7 +55,7 @@ class TDBlock:
     n_states = None
     instance_counter: int = None
 
-    def __init__(self, name: str = None, input1=None):
+    def __init__(self, name: str = None, input1=None, params=None):
         # increment the correct class attribute
         type(self).instance_counter += 1
         self.state_vars = ds.get_state_vars(self.n_states)
@@ -65,6 +65,11 @@ class TDBlock:
         self.u1, = self.input_expr_list = [input1]
 
         # TODO: support multiple scalar inputs
+
+        if params is None:
+            params = {}
+        self.params = params
+        self.__dict__.update(params)
 
         # make each state variable available as `self.x1`, `self.x2`, ...
         for i, x_i in enumerate(self.state_vars, start=1):
@@ -113,13 +118,21 @@ def new_TDBlock(n_states=None, suffix=None) -> TDBlock:
     ds.block_classes[name] = new_class
     return new_class
 
+T = 0.1
 
 ####
 class dtPT1(new_TDBlock(1)):
 
     def rhs(self, k: int, state: List) -> List:
+
+        assert "K" in self.params
+        assert "T1" in self.params
+
         x1,  = self.state_vars
-        new_x1 = 0.8*x1 + .1*self.u1
+
+        E = sp.exp(-T/self.T1)
+
+        new_x1 = self.K*(1- E)*self.u1 + x1*E
 
         return [new_x1]
 
