@@ -103,7 +103,7 @@ class TDBlock:
         raise NotImplementedError
 
 
-def new_TDBlock(n_states=None, suffix=None) -> TDBlock:
+def new_TDBlock(n_states=None, suffix=None) -> type:
     assert isinstance(n_states, int) and n_states > 0
 
     if suffix is None:
@@ -130,11 +130,41 @@ class dtPT1(new_TDBlock(1)):
 
         x1,  = self.state_vars
 
-        E = sp.exp(-T/self.T1)
+        E1 = sp.exp(-T/self.T1)
 
-        new_x1 = self.K*(1- E)*self.u1 + x1*E
+        new_x1 = self.K*(1 - E1)*self.u1 + x1*E1
 
         return [new_x1]
+
+
+class dtPT2(new_TDBlock(2)):
+
+    def rhs(self, k: int, state: List) -> List:
+
+        assert "K" in self.params
+        assert "T1" in self.params
+        assert "T2" in self.params
+
+        if self.T1 != self.T2:
+            raise NotImplementedError
+
+        # calculate coefficients of time discrete transfer function
+
+        x1, x2  = self.state_vars
+
+        E1 = sp.exp(-T/self.T1)
+
+        b1 = - 2*E1
+        b2 = E1**2
+
+        a1 = self.K*(1- E1 -  T/self.T1*E1)
+        a2 = self.K*(E1**2 -E1 + T/self.T1 *E1)
+
+        x2_new = a2*self.u1 - b2*x1
+        x1_new = x2 + a1*self.u1 - b1*x1
+
+        return [x1_new, x2_new]
+
 
 
 def blocksimulation(k_end):

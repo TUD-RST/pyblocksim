@@ -29,11 +29,16 @@ class TestTD1(unittest.TestCase):
         dtPT1_1 = pbs.td.dtPT1(input1=u1_expr, params=dict(K=1, T1=T1))
         dtPT1_2 = pbs.td.dtPT1(input1=dtPT1_1.Y, params=dict(K=1, T1=T1))
 
+
+        dtPT2_1 = pbs.td.dtPT2(input1=u1_expr, params=dict(K=1, T1=T1, T2=T1))
+
+
+
         kk, xx = pbs.td.blocksimulation(100)
 
-        if 0:
+        if 1:
             from matplotlib import pyplot as plt
-            plt.plot(kk, xx)
+            plt.plot(kk, xx[:, [0, 1, 2]], marker=".")
             plt.plot(kk, xx[:,0]*0 + (1-np.exp(-1))*u_amplitude, "k-")
             plt.grid()
             plt.show()
