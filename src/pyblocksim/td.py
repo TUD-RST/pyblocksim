@@ -166,6 +166,52 @@ class dtPT2(new_TDBlock(2)):
         return [x1_new, x2_new]
 
 
+class dtSigmoid(new_TDBlock(5)):
+
+    def rhs(self, k: int, state: List) -> List:
+
+        assert "K" in self.params
+        assert "T_trans" in self.params
+        assert "sens" in self.params
+
+        # calculate coefficients of time discrete transfer function
+
+        x1, x2, x_cntr, x_u_storage, x_debug  = self.state_vars
+        x_u_storage_new = self.u1
+
+        # determine a change of the input
+        input_change = sp.Piecewise((1, sp.Abs(self.u1 - x_u_storage) > self.sens), (0, True))
+
+        # counter
+        delta_cntr = T/self.T_trans
+        x_cntr_new =  sp.Piecewise(
+            (delta_cntr, sp.Abs(self.u1 - x_u_storage) > self.sens),
+            # note that expressions like 0 < x < 1 are not possible for sympy symbols
+            (x_cntr + delta_cntr, (0 < x_cntr) &  (x_cntr<= 1)),
+            (0, True),
+        )
+
+        T_fast = 2*T
+        T1 = T_fast + self.T_trans*(1+40*sp.Abs(1-x_cntr)**10)/12
+        x_debug_new = input_change
+        # x_debug_new = T1
+        # x_debug_new = self.u1 - x_u_storage
+
+        E1 = sp.exp(-T/T1)
+
+
+        # this is a normal PT2 element but with dynamically adapted time constant
+        b1 = - 2*E1
+        b2 = E1**2
+
+        a1 = self.K*(1- E1 -  T/T1*E1)
+        a2 = self.K*(E1**2 -E1 + T/T1 *E1)
+
+        x2_new = a2*self.u1 - b2*x1
+        x1_new = x2 + a1*self.u1 - b1*x1
+
+        return [x1_new, x2_new, x_cntr_new, x_u_storage_new, x_debug_new]
+
 
 def blocksimulation(k_end):
 

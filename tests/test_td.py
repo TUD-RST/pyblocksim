@@ -31,15 +31,19 @@ class TestTD1(unittest.TestCase):
 
 
         dtPT2_1 = pbs.td.dtPT2(input1=u1_expr, params=dict(K=1, T1=T1, T2=T1))
-
-
+        dtsigm_1 = pbs.td.dtSigmoid(input1=u1_expr, params=dict(K=1, T_trans=3, sens=.1))
 
         kk, xx = pbs.td.blocksimulation(100)
 
         if 1:
             from matplotlib import pyplot as plt
-            plt.plot(kk, xx[:, [0, 1, 2]], marker=".")
-            plt.plot(kk, xx[:,0]*0 + (1-np.exp(-1))*u_amplitude, "k-")
+            T = pbs.td.T
+            if 0:
+                plt.plot(kk*T, xx[:, [0, 1, 2]], marker=".")
+                plt.plot(kk*T, xx[:,0]*0 + (1-np.exp(-1))*u_amplitude, "k-")
+            if 1:
+                plt.plot(kk*T, xx[:, 2], marker=".")
+                plt.plot(kk*T, xx[:, -5:], marker=".")
             plt.grid()
             plt.show()
 
