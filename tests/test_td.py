@@ -91,7 +91,8 @@ class TestTD1(unittest.TestCase):
         u1_expr = pbs.sp.Piecewise((0, k < step1), (u_amplitude, k < step2), (0, True))
 
         dss_1 = pbs.td.dtDirectionSensitiveSigmoid(
-            input1=u1_expr, params=dict(K=1, T_trans_pos=T_trans_pos, T_trans_neg=T_trans_neg, sens=.1)
+            input1=u1_expr,
+            params=dict(K=1, T_trans_pos=T_trans_pos, T_trans_neg=T_trans_neg, sens=.1, f_wait_neg=0.3)
         )
 
         kk, xx, bo = pbs.td.blocksimulation(int(step2 + T_trans_neg/T)+10)
@@ -100,7 +101,7 @@ class TestTD1(unittest.TestCase):
         steps_end = steps_start + np.r_[T_trans_pos, T_trans_neg]
         plt.plot(kk*T, dss_1.output_res, marker=".")
         plt.plot(kk*T, xx[:, 4], marker=".")
-        plt.vlines(steps_start, ymin=0, ymax=u_amplitude, colors="tab:pink")
-        plt.vlines(steps_end, ymin=0, ymax=u_amplitude, colors="k")
+        plt.vlines(steps_start, ymin=-1, ymax=u_amplitude, colors="tab:pink")
+        plt.vlines(steps_end, ymin=-1, ymax=u_amplitude, colors="k")
         plt.grid()
         plt.show()

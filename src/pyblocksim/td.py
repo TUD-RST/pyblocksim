@@ -275,8 +275,8 @@ class dtDirectionSensitiveSigmoid(new_TDBlock(5)):
         assert "sens" in self.params
 
         # fraction of overall counter time that is used for waiting
-        f_wait_pos = getattr(self, "c_wait_pos", 0)
-        f_wait_neg = getattr(self, "c_wait_neg", 0)
+        f_wait_pos = getattr(self, "f_wait_pos", 0)
+        f_wait_neg = getattr(self, "f_wait_neg", 0)
 
         assert 0 <= f_wait_pos <= 1
         assert 0 <= f_wait_neg <= 1
@@ -301,30 +301,32 @@ class dtDirectionSensitiveSigmoid(new_TDBlock(5)):
 
         # implement the waiting
         # effective waiting fraction
-        f_wait = 0.5#  sp.Piecewise((f_wait_neg, x_cntr < 0), (f_wait_pos, x_cntr > 0), (0, True))
+        f_wait = sp.Piecewise((f_wait_neg, x_cntr < 0), (f_wait_pos, x_cntr > 0), (0, True))
 
-        # effective counter
-        x_cntr_eff = sp.Abs(x_cntr)*1 # + limit(sp.Abs(x_cntr), xmin=f_wait, xmax=1, ymin=0, ymax=1)*sp.sign(x_cntr)
-        q = limit(sp.Abs(x_cntr), xmin=f_wait, xmax=1, ymin=0, ymax=1)*sp.sign(x_cntr)
+        # effective counter (reaching the goal early by intention)
+        x_cntr_eff = limit(sp.Abs(x_cntr), xmin=f_wait, xmax=.95, ymin=0, ymax=1)*sign(x_cntr)
 
         T_fast = 2*T
 
         # this will reach 0 before |x_cntr_eff| will reach 1
-        count_down = limit(1-1.2*sp.Abs(x_cntr_eff), xmin=0, xmax=1, ymin=0, ymax=1)
+        # count_down = limit(1-1.2*sp.Abs(x_cntr_eff), xmin=0, xmax=1, ymin=0, ymax=1)
+        count_down = 1 - sp.Abs(x_cntr_eff)
 
 
         T_trans = sp.Piecewise((self.T_trans_neg, x_cntr < 0), (self.T_trans_pos, x_cntr > 0), (0, True) )
 
         T1 = T_fast + .6*self.T_trans_pos*(1+40*count_down**10)/12
-        x_debug_new = q
-        # x_debug_new = T1
-        # x_debug_new = self.u1 - x_u_storage
 
         p12 = 0.6
 
-        phase0 = sp.Piecewise((1, x_cntr_eff == 0), (0, True))
-        phase2 = limit(x_cntr_eff, xmin=p12, xmax=1, ymin=0, ymax=1)*(1-phase0)
+        phase0 = sp.Piecewise((1, sp.Abs(x_cntr_eff) <= 1e-4), (0, True))
+        phase2 = limit(sp.Abs(x_cntr_eff), xmin=p12, xmax=1, ymin=0, ymax=1)*(1-phase0)
         phase1 = (1 - phase2)*(1-phase0)
+
+
+        x_debug_new = x_cntr_eff#  phase0*10 + phase1
+        # x_debug_new = T1
+        # x_debug_new = self.u1 - x_u_storage
 
         # PT2 Element based on Euler forward approximation
         x1_new = sum((
@@ -399,11 +401,15 @@ def gen_global_rhs():
 
     ds.rhs_func = st.expr_to_func([k, *ds.all_state_vars], ds.global_rhs_expr, modules="numpy")
 
+    # IPS()
     return ds.rhs_func
 
 
 def td_step(k, k_step, value1=1, value0=0):
     return sp.Piecewise((value0, k < k_step), (value1, True))
+
+def sign(x):
+    return sp.Piecewise((-1, x < 0), (0, x == 0), (1, True))
 
 
 def compute_block_outputs(kk, xx) -> dict:
