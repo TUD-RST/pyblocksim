@@ -94,11 +94,12 @@ class TestTD1(unittest.TestCase):
             input1=u1_expr, params=dict(K=1, T_trans_pos=T_trans_pos, T_trans_neg=T_trans_neg, sens=.1)
         )
 
-        kk, xx, bo = pbs.td.blocksimulation(int(T_trans_pos/T + T_trans_neg/T)+30)
+        kk, xx, bo = pbs.td.blocksimulation(int(step2 + T_trans_neg/T)+10)
 
         steps_start = np.r_[step1*T, step2*T]
         steps_end = steps_start + np.r_[T_trans_pos, T_trans_neg]
         plt.plot(kk*T, dss_1.output_res, marker=".")
+        plt.plot(kk*T, xx[:, 4], marker=".")
         plt.vlines(steps_start, ymin=0, ymax=u_amplitude, colors="tab:pink")
         plt.vlines(steps_end, ymin=0, ymax=u_amplitude, colors="k")
         plt.grid()

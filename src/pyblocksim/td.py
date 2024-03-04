@@ -270,11 +270,16 @@ class dtDirectionSensitiveSigmoid(new_TDBlock(5)):
     def rhs(self, k: int, state: List) -> List:
 
         assert "K" in self.params
-        assert "T_trans_pos" in self.params
+        assert "T_trans_pos" in self.params # overall counter time
         assert "T_trans_neg" in self.params
         assert "sens" in self.params
 
-        # calculate coefficients of time discrete transfer function
+        # fraction of overall counter time that is used for waiting
+        f_wait_pos = getattr(self, "c_wait_pos", 0)
+        f_wait_neg = getattr(self, "c_wait_neg", 0)
+
+        assert 0 <= f_wait_pos <= 1
+        assert 0 <= f_wait_neg <= 1
 
         x1, x2, x_cntr, x_u_storage, x_debug  = self.state_vars
         x_u_storage_new = self.u1
@@ -286,38 +291,50 @@ class dtDirectionSensitiveSigmoid(new_TDBlock(5)):
         pos_delta_cntr = T/self.T_trans_pos
         neg_delta_cntr = -T/self.T_trans_neg
         x_cntr_new =  sp.Piecewise(
-            (pos_delta_cntr, sp.Abs(self.u1 - x_u_storage) > self.sens),
-            (neg_delta_cntr, sp.Abs(self.u1 - x_u_storage) < - self.sens),
+            (pos_delta_cntr, self.u1 - x_u_storage > self.sens),
+            (neg_delta_cntr, self.u1 - x_u_storage < - self.sens),
             # note that expressions like 0 < x < 1 are not possible for sympy symbols
             (x_cntr + pos_delta_cntr, (0 < x_cntr) & (x_cntr<= 1)),
             (x_cntr + neg_delta_cntr, (0 < -x_cntr) & (-x_cntr<= 1)),
             (0, True),
         )
 
+        # implement the waiting
+        # effective waiting fraction
+        f_wait = 0.5#  sp.Piecewise((f_wait_neg, x_cntr < 0), (f_wait_pos, x_cntr > 0), (0, True))
+
+        # effective counter
+        x_cntr_eff = sp.Abs(x_cntr)*1 # + limit(sp.Abs(x_cntr), xmin=f_wait, xmax=1, ymin=0, ymax=1)*sp.sign(x_cntr)
+        q = limit(sp.Abs(x_cntr), xmin=f_wait, xmax=1, ymin=0, ymax=1)*sp.sign(x_cntr)
+
         T_fast = 2*T
 
-        # this will reach 0 before x_cntr will reach 1
-        count_down = limit(1-1.2*x_cntr, xmin=0, xmax=1, ymin=0, ymax=1)
+        # this will reach 0 before |x_cntr_eff| will reach 1
+        count_down = limit(1-1.2*sp.Abs(x_cntr_eff), xmin=0, xmax=1, ymin=0, ymax=1)
+
+
+        T_trans = sp.Piecewise((self.T_trans_neg, x_cntr < 0), (self.T_trans_pos, x_cntr > 0), (0, True) )
 
         T1 = T_fast + .6*self.T_trans_pos*(1+40*count_down**10)/12
-        x_debug_new = input_change
+        x_debug_new = q
         # x_debug_new = T1
         # x_debug_new = self.u1 - x_u_storage
 
         p12 = 0.6
 
-        phase2 = limit(x_cntr, xmin=p12, xmax=1, ymin=0, ymax=1)
-        phase1 = 1 - phase2
+        phase0 = sp.Piecewise((1, x_cntr_eff == 0), (0, True))
+        phase2 = limit(x_cntr_eff, xmin=p12, xmax=1, ymin=0, ymax=1)*(1-phase0)
+        phase1 = (1 - phase2)*(1-phase0)
 
         # PT2 Element based on Euler forward approximation
         x1_new = sum((
             x1,
             (T*x2)*phase1,    # ordinary PT2 part
-            (T/T_fast*(self.K*self.u1 - x1))*phase2,
+            (T/T_fast*(self.K*self.u1 - x1))*phase2,  # fast PT1-convergence towards the stationary value
         ))
 
-        # at the very end we want x1 == K*u1
-        x1_new = sp.Piecewise((x1_new, x_cntr<= 1), (self.K*self.u1, True))
+        # at the very end we want x1 == K*u1 (exactly)
+        x1_new = sp.Piecewise((x1_new, sp.Abs(x_cntr)<= 1), (self.K*self.u1, True))
 
 
         # x2 should go to zero at the end of transition
