@@ -1,6 +1,7 @@
 import unittest
 import pyblocksim as pbs
 import numpy as np
+from matplotlib import pyplot as plt
 
 from ipydex import IPS
 
@@ -9,6 +10,26 @@ from ipydex import IPS
 class TestTD1(unittest.TestCase):
     def setUp(self):
         pbs.restart()
+
+    def test_limit1(self):
+
+        x = pbs.td.sp.Symbol("x")
+        expr = pbs.td.limit(x, -3, 7, -1, 4)
+        fnc = pbs.td.st.expr_to_func(x, expr)
+        xx = np.linspace(-10, 10, 1000)
+
+        if 0:
+            plt.plot(xx, fnc(xx))
+            plt.xticks(np.arange(-10, 10))
+            plt.grid()
+            plt.show()
+
+        self.assertEqual(fnc(-4), -1)
+        self.assertAlmostEqual(fnc(-2.8), -.9)
+        self.assertAlmostEqual(fnc(0), 0.5)
+        self.assertAlmostEqual(fnc(6.9), 3.95)
+        self.assertEqual(fnc(7.1), 4)
+
 
     def test_block_construction1(self):
 
@@ -31,12 +52,12 @@ class TestTD1(unittest.TestCase):
 
 
         dtPT2_1 = pbs.td.dtPT2(input1=u1_expr, params=dict(K=1, T1=T1, T2=T1))
-        dtPT2_2 = pbs.td.dtPT2Euler(input1=u1_expr, params=dict(K=1, T1=T1, T2=T1))
-        # dtsigm_1 = pbs.td.dtSigmoid(input1=u1_expr, params=dict(K=1, T_trans=3, sens=.1))
+        # dtPT2_2 = pbs.td.dtPT2Euler(input1=u1_expr, params=dict(K=1, T1=T1, T2=T1))
+        dtsigm_1 = pbs.td.dtSigmoid(input1=u1_expr, params=dict(K=1, T_trans=3, sens=.1))
 
         kk, xx = pbs.td.blocksimulation(100)
 
-        if 0:
+        if 1:
             from matplotlib import pyplot as plt
             T = pbs.td.T
             if 0:

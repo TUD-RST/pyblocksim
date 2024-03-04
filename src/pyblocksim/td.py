@@ -217,25 +217,26 @@ class dtSigmoid(new_TDBlock(5)):
         )
 
         T_fast = 2*T
-        T1 = T_fast + self.T_trans*(1+40*sp.Abs(1-x_cntr)**10)/12
+        T1 = T_fast + .75*self.T_trans*(1+40*sp.Abs(1-x_cntr)**10)/12
         x_debug_new = input_change
         # x_debug_new = T1
         # x_debug_new = self.u1 - x_u_storage
 
-        E1 = sp.exp(-T/T1)
-
-
-        # this is a normal PT2 element but with dynamically adapted time constant
-        b1 = - 2*E1
-        b2 = E1**2
-
-        a1 = self.K*(1- E1 -  T/T1*E1)
-        a2 = self.K*(E1**2 -E1 + T/T1 *E1)
-
-        x2_new = a2*self.u1 - b2*x1
-        x1_new = x2 + a1*self.u1 - b1*x1
+        # PT2 Element based on Euler forward approximation
+        x1_new = x1 + T*x2
+        x2_new = x2 + T*(1/(T1*T1)*(-(T1 + T1)*x2 - x1 + self.u1))
 
         return [x1_new, x2_new, x_cntr_new, x_u_storage_new, x_debug_new]
+
+def limit(x, xmin=0, xmax=1, ymin=0, ymax=1):
+
+    dx = xmax - xmin
+    dy = ymax - ymin
+    m = dy/dx
+
+    new_x_expr = ymin + (x - xmin)*m
+
+    return sp.Piecewise((ymin, x < xmin), (new_x_expr, x < xmax), (ymax, True))
 
 
 def blocksimulation(k_end):
