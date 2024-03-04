@@ -55,7 +55,7 @@ class TestTD1(unittest.TestCase):
         # dtPT2_2 = pbs.td.dtPT2Euler(input1=u1_expr, params=dict(K=1, T1=T1, T2=T1))
         dtsigm_1 = pbs.td.dtSigmoid(input1=u1_expr, params=dict(K=1, T_trans=3, sens=.1))
 
-        kk, xx = pbs.td.blocksimulation(100)
+        kk, xx, bo = pbs.td.blocksimulation(100)
 
         if 1:
             from matplotlib import pyplot as plt
@@ -75,3 +75,31 @@ class TestTD1(unittest.TestCase):
 
         # evaluate 63% criterion
         self.assertAlmostEqual(xx[eval_k, 0], (1 - np.exp(-1))*u_amplitude)
+
+
+    def test_block_DirectionSensitiveSigmoid(self):
+
+        T = pbs.td.T
+        k = pbs.td.k
+        T_trans_pos = 3
+        T_trans_neg = 5
+        u_amplitude = 20
+
+        step1 = 10
+        step2 = T_trans_pos/T + step1 + 25
+
+        u1_expr = pbs.sp.Piecewise((0, k < step1), (u_amplitude, k < step2), (0, True))
+
+        dss_1 = pbs.td.dtDirectionSensitiveSigmoid(
+            input1=u1_expr, params=dict(K=1, T_trans_pos=T_trans_pos, T_trans_neg=T_trans_neg, sens=.1)
+        )
+
+        kk, xx, bo = pbs.td.blocksimulation(int(T_trans_pos/T + T_trans_neg/T)+30)
+
+        steps_start = np.r_[step1*T, step2*T]
+        steps_end = steps_start + np.r_[T_trans_pos, T_trans_neg]
+        plt.plot(kk*T, dss_1.output_res, marker=".")
+        plt.vlines(steps_start, ymin=0, ymax=u_amplitude, colors="tab:pink")
+        plt.vlines(steps_end, ymin=0, ymax=u_amplitude, colors="k")
+        plt.grid()
+        plt.show()

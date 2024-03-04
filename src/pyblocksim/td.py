@@ -15,6 +15,9 @@ from ipydex import IPS
 
 k = sp.Symbol("k")
 
+# this will be replaced by k*T in the final equations
+t = sp.Symbol("t")
+
 
 class DataStore:
     instance = None
@@ -60,6 +63,10 @@ class TDBlock:
         type(self).instance_counter += 1
         self.state_vars = ds.get_state_vars(self.n_states)
 
+        # to calculate and store the output
+        self.output_fnc = None
+        self.output_res = None
+
         if input1 is None:
             input1 = 0
         self.u1, = self.input_expr_list = [input1]
@@ -92,6 +99,9 @@ class TDBlock:
     @property
     def Y(self):
         return self.output()
+
+    def __repr__(self):
+        return type(self).__name__ + ":" + self.name
 
 
     def rhs(self, k: int, state: List) -> List:
@@ -252,6 +262,74 @@ class dtSigmoid(new_TDBlock(5)):
         return [x1_new, x2_new, x_cntr_new, x_u_storage_new, x_debug_new]
 
 
+class dtDirectionSensitiveSigmoid(new_TDBlock(5)):
+    """
+    This Sigmoid behaves differently for positive and negative input steps
+    """
+
+    def rhs(self, k: int, state: List) -> List:
+
+        assert "K" in self.params
+        assert "T_trans_pos" in self.params
+        assert "T_trans_neg" in self.params
+        assert "sens" in self.params
+
+        # calculate coefficients of time discrete transfer function
+
+        x1, x2, x_cntr, x_u_storage, x_debug  = self.state_vars
+        x_u_storage_new = self.u1
+
+        # determine a change of the input
+        input_change = sp.Piecewise((1, sp.Abs(self.u1 - x_u_storage) > self.sens), (0, True))
+
+        # counter
+        pos_delta_cntr = T/self.T_trans_pos
+        neg_delta_cntr = -T/self.T_trans_neg
+        x_cntr_new =  sp.Piecewise(
+            (pos_delta_cntr, sp.Abs(self.u1 - x_u_storage) > self.sens),
+            (neg_delta_cntr, sp.Abs(self.u1 - x_u_storage) < - self.sens),
+            # note that expressions like 0 < x < 1 are not possible for sympy symbols
+            (x_cntr + pos_delta_cntr, (0 < x_cntr) & (x_cntr<= 1)),
+            (x_cntr + neg_delta_cntr, (0 < -x_cntr) & (-x_cntr<= 1)),
+            (0, True),
+        )
+
+        T_fast = 2*T
+
+        # this will reach 0 before x_cntr will reach 1
+        count_down = limit(1-1.2*x_cntr, xmin=0, xmax=1, ymin=0, ymax=1)
+
+        T1 = T_fast + .6*self.T_trans_pos*(1+40*count_down**10)/12
+        x_debug_new = input_change
+        # x_debug_new = T1
+        # x_debug_new = self.u1 - x_u_storage
+
+        p12 = 0.6
+
+        phase2 = limit(x_cntr, xmin=p12, xmax=1, ymin=0, ymax=1)
+        phase1 = 1 - phase2
+
+        # PT2 Element based on Euler forward approximation
+        x1_new = sum((
+            x1,
+            (T*x2)*phase1,    # ordinary PT2 part
+            (T/T_fast*(self.K*self.u1 - x1))*phase2,
+        ))
+
+        # at the very end we want x1 == K*u1
+        x1_new = sp.Piecewise((x1_new, x_cntr<= 1), (self.K*self.u1, True))
+
+
+        # x2 should go to zero at the end of transition
+        x2_new = sum((
+            x2*phase1,
+            T*(1/(T1*T1)*(-(T1 + T1)*x2 - x1 + self.K*self.u1))*phase1,
+
+        ))
+
+        return [x1_new, x2_new, x_cntr_new, x_u_storage_new, x_debug_new]
+
+
 def limit(x, xmin=0, xmax=1, ymin=0, ymax=1):
 
     dx = xmax - xmin
@@ -280,21 +358,27 @@ def blocksimulation(k_end):
 
     ds.state_history = np.array(ds.state_history)
 
-    return kk_num, ds.state_history
+    block_outputs = compute_block_outputs(kk_num, ds.state_history)
+
+    return kk_num, ds.state_history, block_outputs
 
 
 def gen_global_rhs():
 
-
     ds.global_rhs_expr = []
     ds.all_state_vars = []
+
+    rplmts = [(t, k*T)]
+
     for block_name, state_vars in ds.state_var_mapping.items():
         block_instance: TDBlock = ds.block_instances[block_name]
 
         rhs_expr = list(block_instance.rhs(k, state_vars))
 
         ds.all_state_vars.extend(state_vars)
-        ds.global_rhs_expr.extend(rhs_expr)
+
+        rhs_expr2 = [elt.subs(rplmts) for elt in rhs_expr]
+        ds.global_rhs_expr.extend(rhs_expr2)
 
     ds.rhs_func = st.expr_to_func([k, *ds.all_state_vars], ds.global_rhs_expr, modules="numpy")
 
@@ -303,3 +387,20 @@ def gen_global_rhs():
 
 def td_step(k, k_step, value1=1, value0=0):
     return sp.Piecewise((value0, k < k_step), (value1, True))
+
+
+def compute_block_outputs(kk, xx) -> dict:
+    """
+    """
+
+    # get functions for outputs
+
+    block_outputs = {}
+    for block_name in ds.state_var_mapping.keys():
+        block: TDBlock = ds.block_instances[block_name]
+
+        if block.output_fnc is None:
+            block.output_fnc = st.expr_to_func([k, *ds.all_state_vars], block.output())
+        block.output_res = block_outputs[block] = block.output_fnc(kk, *xx.T)
+
+    return block_outputs
