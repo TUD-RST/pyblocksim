@@ -217,16 +217,40 @@ class dtSigmoid(new_TDBlock(5)):
         )
 
         T_fast = 2*T
-        T1 = T_fast + .75*self.T_trans*(1+40*sp.Abs(1-x_cntr)**10)/12
+
+        # this will reach 0 before x_cntr will reach 1
+        count_down = limit(1-1.2*x_cntr, xmin=0, xmax=1, ymin=0, ymax=1)
+
+        T1 = T_fast + .6*self.T_trans*(1+40*count_down**10)/12
         x_debug_new = input_change
         # x_debug_new = T1
         # x_debug_new = self.u1 - x_u_storage
 
+        p12 = 0.6
+
+        phase2 = limit(x_cntr, xmin=p12, xmax=1, ymin=0, ymax=1)
+        phase1 = 1 - phase2
+
         # PT2 Element based on Euler forward approximation
-        x1_new = x1 + T*x2
-        x2_new = x2 + T*(1/(T1*T1)*(-(T1 + T1)*x2 - x1 + self.u1))
+        x1_new = sum((
+            x1,
+            (T*x2)*phase1,    # ordinary PT2 part
+            (T/T_fast*(self.K*self.u1 - x1))*phase2,
+        ))
+
+        # at the very end we want x1 == K*u1
+        x1_new = sp.Piecewise((x1_new, x_cntr<= 1), (self.K*self.u1, True))
+
+
+        # x2 should go to zero at the end of transition
+        x2_new = sum((
+            x2*phase1,
+            T*(1/(T1*T1)*(-(T1 + T1)*x2 - x1 + self.K*self.u1))*phase1,
+
+        ))
 
         return [x1_new, x2_new, x_cntr_new, x_u_storage_new, x_debug_new]
+
 
 def limit(x, xmin=0, xmax=1, ymin=0, ymax=1):
 
