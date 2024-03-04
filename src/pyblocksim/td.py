@@ -166,6 +166,31 @@ class dtPT2(new_TDBlock(2)):
         return [x1_new, x2_new]
 
 
+class dtPT2Euler(new_TDBlock(2)):
+    """
+    PT2 element discretized via Eulers forward method
+    """
+
+
+    def rhs(self, k: int, state: List) -> List:
+
+        assert "K" in self.params
+        assert "T1" in self.params
+        assert "T2" in self.params
+
+        if self.T1 != self.T2:
+            raise NotImplementedError
+
+        # calculate coefficients of time discrete transfer function
+
+        x1, x2  = self.state_vars
+
+        x1_new = x1 + T*x2
+        x2_new = x2 + T*(1/(self.T1*self.T2)*(-(self.T1 + self.T2)*x2 - x1 + self.u1))
+
+        return [x1_new, x2_new]
+
+
 class dtSigmoid(new_TDBlock(5)):
 
     def rhs(self, k: int, state: List) -> List:

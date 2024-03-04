@@ -31,11 +31,12 @@ class TestTD1(unittest.TestCase):
 
 
         dtPT2_1 = pbs.td.dtPT2(input1=u1_expr, params=dict(K=1, T1=T1, T2=T1))
-        dtsigm_1 = pbs.td.dtSigmoid(input1=u1_expr, params=dict(K=1, T_trans=3, sens=.1))
+        dtPT2_2 = pbs.td.dtPT2Euler(input1=u1_expr, params=dict(K=1, T1=T1, T2=T1))
+        # dtsigm_1 = pbs.td.dtSigmoid(input1=u1_expr, params=dict(K=1, T_trans=3, sens=.1))
 
         kk, xx = pbs.td.blocksimulation(100)
 
-        if 1:
+        if 0:
             from matplotlib import pyplot as plt
             T = pbs.td.T
             if 0:
@@ -43,11 +44,13 @@ class TestTD1(unittest.TestCase):
                 plt.plot(kk*T, xx[:,0]*0 + (1-np.exp(-1))*u_amplitude, "k-")
             if 1:
                 plt.plot(kk*T, xx[:, 2], marker=".")
-                plt.plot(kk*T, xx[:, -5:], marker=".")
+                plt.plot(kk*T, xx[:, 4:], marker=".")
             plt.grid()
             plt.show()
 
         eval_k = int(u_step_time + T1/pbs.td.T)
+
+        # IPS()
 
         # evaluate 63% criterion
         self.assertAlmostEqual(xx[eval_k, 0], (1 - np.exp(-1))*u_amplitude)
