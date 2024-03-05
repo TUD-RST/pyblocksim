@@ -57,7 +57,7 @@ class TestTD1(unittest.TestCase):
 
         kk, xx, bo = pbs.td.blocksimulation(100)
 
-        if 1:
+        if 0:
             from matplotlib import pyplot as plt
             T = pbs.td.T
             if 0:
@@ -99,9 +99,11 @@ class TestTD1(unittest.TestCase):
 
         steps_start = np.r_[step1*T, step2*T]
         steps_end = steps_start + np.r_[T_trans_pos, T_trans_neg]
-        plt.plot(kk*T, dss_1.output_res, marker=".")
-        plt.plot(kk*T, xx[:, 4], marker=".")
-        plt.vlines(steps_start, ymin=-1, ymax=u_amplitude, colors="tab:pink")
-        plt.vlines(steps_end, ymin=-1, ymax=u_amplitude, colors="k")
-        plt.grid()
-        plt.show()
+
+        if 0:
+            plt.plot(kk*T, dss_1.output_res, marker=".")
+            plt.plot(kk*T, xx[:, 4], marker=".")
+            plt.vlines(steps_start, ymin=-1, ymax=u_amplitude, colors="tab:pink")
+            plt.vlines(steps_end, ymin=-1, ymax=u_amplitude, colors="k")
+            plt.grid()
+            plt.show()

@@ -32,6 +32,7 @@ try:
         get_linear_ct_model,
         RHSBlock,
         HyperBlock,
+        restart,
     )
     from . import td
 
