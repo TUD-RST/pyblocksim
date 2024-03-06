@@ -315,6 +315,7 @@ class dtDirectionSensitiveSigmoid(new_TDBlock(5)):
 
         T_trans = sp.Piecewise((self.T_trans_neg, x_cntr < 0), (self.T_trans_pos, x_cntr > 0), (0, True) )
 
+        # !! self muss raus
         T1 = T_fast + .6*self.T_trans_pos*(1+40*count_down**10)/12
 
         p12 = 0.6
@@ -347,6 +348,91 @@ class dtDirectionSensitiveSigmoid(new_TDBlock(5)):
         ))
 
         return [x1_new, x2_new, x_cntr_new, x_u_storage_new, x_debug_new]
+
+
+class dtRelaxoBlock(new_TDBlock(5)):
+    """
+    This block models relaxometrics
+    """
+
+    def rhs(self, k: int, state: List) -> List:
+
+        assert "sens" in self.params
+        assert "K" in self.params
+        assert "slope" in self.params
+        # assumption: next nonzero input not in sigmoid phase
+
+        x1, x2, x_cntr, x4_buffer, x_debug  = self.state_vars
+
+        # time for sigmoid phase
+        self.T_phase1 = 5
+
+
+        # counter
+        pos_delta_cntr = T/self.T_phase1
+        x_cntr_new =  sp.Piecewise(
+            (pos_delta_cntr, self.u1 > 0),
+            (x_cntr + pos_delta_cntr, (0 < x_cntr) & (x_cntr<= 1)),
+            (0, True),
+        )
+
+        sigmoid_phase_cond = (self.u1 > 0) | ((0 < x_cntr) & (x_cntr<= 1))
+
+        # if sigmoid phase is over (counter reached 1) x4 := x1
+        x4_buffer_new = sp.Piecewise((x4_buffer + self.K*self.u1, sigmoid_phase_cond), (x1, True))
+
+        # effective counter (here: same as normal)
+        x_cntr_eff = x_cntr
+
+        T_fast = 2*T
+        count_down = 1 - sp.Abs(x_cntr_eff)
+
+
+        T_trans = sp.Piecewise((self.T_phase1, x_cntr > 0), (0, True) )
+
+        T1 = T_fast + .6*T_trans*(1+40*count_down**10)/12
+
+        p12 = 0.6
+
+
+        counter_active = sp.Piecewise((1, x_cntr > 0), (0, True))
+
+        phase0 = 0# sp.Piecewise((1, sp.Abs(x_cntr_eff) <= 1e-4), (0, True))
+        phase2 = 0# limit(sp.Abs(x_cntr_eff), xmin=p12, xmax=1, ymin=0, ymax=1)*(1-phase0)
+        phase1 = counter_active
+
+
+        x_debug_new = x_cntr_eff#  phase0*10 + phase1
+        # x_debug_new = T1
+        # x_debug_new = self.u1 - x_u_storage
+
+        # PT2 Element based on Euler forward approximation (but here x4 is the "input")
+
+        v = x4_buffer
+
+        x1_new = sum((
+            x1,
+            (T*x2)*counter_active,   # ordinary PT2 part
+
+            # decay with constant rate
+            (self.slope)*sp.Piecewise((1, x1 > 0), (0, True))*(1-counter_active)  # assumption: slope < 0
+        ))
+
+        # at the very end we want x1 == K*u1 (exactly)
+        x1_new = sp.Piecewise((x1_new, sp.Abs(x_cntr)<= 1), (v, True))
+
+        # x2 should go to zero at the end of transition
+        x2_new = sum((
+            x2*phase1,
+            T*(1/(T1*T1)*(-(T1 + T1)*x2 - x1 + v))*phase1,
+        ))
+
+        return [x1_new, x2_new, x_cntr_new, x4_buffer_new, x_debug_new]
+
+    def output(self):
+        return 1 - self.x1
+
+
 
 
 def limit(x, xmin=0, xmax=1, ymin=0, ymax=1):
