@@ -128,6 +128,23 @@ def new_TDBlock(n_states=None, suffix=None) -> type:
     ds.block_classes[name] = new_class
     return new_class
 
+
+class StaticBlock(TDBlock):
+
+    n_states = 0
+    instance_counter = 0
+
+    def __init__(self, name: str = None, output_expr: sp.Expr = None):
+        super().__init__(name=name, input1=None, params=None)
+        self.output_expr = output_expr
+
+    def rhs(self, k: int, state: List) -> List:
+        return state
+
+    def output(self):
+        return self.output_expr
+
+
 T = 0.1
 
 ####

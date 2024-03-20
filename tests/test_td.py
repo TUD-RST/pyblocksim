@@ -78,6 +78,36 @@ class TestTD1(unittest.TestCase):
         # evaluate 63% criterion
         self.assertAlmostEqual(xx[eval_k, 0], (1 - np.exp(-1))*u_amplitude)
 
+    def test_block_simulation2(self):
+        # now with static block
+        u_amplitude = 10
+        u_step_time = 1
+        T1 = 1
+        u1_expr = pbs.td.td_step(pbs.td.k, u_step_time, u_amplitude)
+        dtPT1_1 = pbs.td.dtPT1(input1=u1_expr, params=dict(K=1, T1=T1))
+        dtPT1_2 = pbs.td.dtPT1(input1=dtPT1_1.Y, params=dict(K=2, T1=T1))
+
+        static_block = pbs.td.StaticBlock(output_expr=dtPT1_1.Y + dtPT1_2.Y**2)
+
+
+        kk, xx, bo = pbs.td.blocksimulation(100)
+
+        if 0:
+            from matplotlib import pyplot as plt
+            T = pbs.td.T
+            if 1:
+                plt.plot(kk*T, bo[dtPT1_1], marker=".")
+                plt.plot(kk*T, bo[dtPT1_2], marker=".")
+                plt.plot(kk*T, bo[static_block], marker=".")
+            plt.grid()
+            plt.show()
+
+        eval_k = int(u_step_time + T1/pbs.td.T)
+
+        # evaluate correct static calculation
+        self.assertGreater(bo[static_block][-1], 409)
+        self.assertLess(bo[static_block][-1], 410)
+
 
     def test_block_DirectionSensitiveSigmoid(self):
 
