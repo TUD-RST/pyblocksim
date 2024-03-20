@@ -579,6 +579,9 @@ def gen_global_rhs():
 
         ds.global_rhs_expr.extend(rhs_expr2)
 
+        if hasattr(block_instance, "output_expr"):
+            block_instance.output_expr = block_instance.output_expr.subs(rplmts)
+
     assert len(ds.global_rhs_expr) == len(ds.all_state_vars)
     ds.rhs_func = st.expr_to_func([k, *ds.all_state_vars], ds.global_rhs_expr, modules="numpy")
 
