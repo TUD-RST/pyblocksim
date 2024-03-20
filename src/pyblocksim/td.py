@@ -433,6 +433,75 @@ class dtRelaxoBlock(new_TDBlock(5)):
         return 1 - self.x1
 
 
+class dtSulfenta(new_TDBlock(5)):
+    """
+    This block models pain suppression with sulfentanil
+    """
+
+    def rhs(self, k: int, state: List) -> List:
+
+        assert "rise_time" in self.params
+        assert "down_slope" in self.params
+        assert self.down_slope < 0
+
+        # how long effect stays constant (dependent on input)
+        assert "active_time_coeff" in self.params
+        assert "dose_gain" in self.params
+
+        # assumption: next nonzero input not in rising or const phase
+
+        x1, x2_target_effect, x3_cntr, x4_slope, x_debug  = self.state_vars
+
+        # value by which the counter is increased in every step
+        # after N = rise_time/T steps the counter reaches 1
+        delta_cntr1 = T/self.rise_time
+
+        eps = 1e-8 # prevent ZeroDivisionError when calculating unused intermediate result
+        delta_cntr2 = sp.Piecewise(
+            (T/(self.active_time_coeff*(x2_target_effect/self.dose_gain + eps)), x2_target_effect > 0),
+            (0, True)
+        )
+        x3_cntr_new =  sp.Piecewise(
+            (delta_cntr1, self.u1 > 0),
+            (x3_cntr + delta_cntr1, (0 < x3_cntr) & (x3_cntr<= 1)),
+            # after counter reached 1 -> count from 1 to 2
+            (x3_cntr + delta_cntr2, (1 < x3_cntr) & (x3_cntr<= 2)),
+            (x3_cntr, (2 < x3_cntr) & (x3_cntr<= 3) & (x1 > 0)),
+            (0, True),
+        )
+
+
+        # save uninfluenced target effect for input dose if it is unequal zero
+        # "uninfluenced" means as if it was starting from zero
+        # -> this yields the correct slope and active time
+        # however the real value of x1 might be higher, if the 2nd input dose comes for x1 > 0
+        # then x1 is simply increased by the slope
+        x2_target_effect_new = sp.Piecewise(
+            (x1*0+ self.u1*self.dose_gain, self.u1 > 0),
+            (x2_target_effect, True),
+        )
+
+        x4_slope_new = sp.Piecewise(
+            (x2_target_effect_new/self.rise_time*T, self.u1 > 0),
+            (x4_slope, True),
+        )
+
+        x1_new = sp.Piecewise(
+            (x1 + x4_slope_new, (0 < x3_cntr) & (x3_cntr<= 1)),
+            (x1, (1 < x3_cntr) & (x3_cntr<= 2)),
+            (x1 + T*self.down_slope, (2 < x3_cntr) & (x3_cntr<= 3) & (x1 >  T*self.down_slope)),
+            (0, True),
+        )
+
+        x_debug_new = 0
+
+        res = [x1_new, x2_target_effect_new, x3_cntr_new, x4_slope_new, x_debug_new]
+        return res
+
+
+    def output(self):
+        return self.x1
+
 
 
 def limit(x, xmin=0, xmax=1, ymin=0, ymax=1):

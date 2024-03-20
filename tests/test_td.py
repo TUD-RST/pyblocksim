@@ -1,6 +1,8 @@
 import unittest
 import pyblocksim as pbs
+import symbtools as st
 import numpy as np
+import sympy as sp
 from matplotlib import pyplot as plt
 
 from ipydex import IPS
@@ -107,3 +109,39 @@ class TestTD1(unittest.TestCase):
             plt.vlines(steps_end, ymin=-1, ymax=u_amplitude, colors="k")
             plt.grid()
             plt.show()
+
+    def test_block_Sulfenta(self):
+
+
+        from ipydex import Container
+
+        dc = Container()
+
+        dc.cr1 = dc.cr2 = 0.3
+        T = pbs.td.T
+        t = pbs.t
+
+        T_end = 120
+        tt = np.arange(0, int(T_end/T) + 1)*T
+
+        u_expr_sulfenta = sp.Piecewise((dc.cr1, apx(t, 5)), (dc.cr2, apx(t, 40)), (0, True))
+        u_func = ufunc = st.expr_to_func(t, u_expr_sulfenta)
+
+        params = dict(
+            rise_time=5,
+            down_slope=.8/15,
+            active_time_coeff=100,
+            dose_gain=0.5/0.3  # achieve output of 0.5 for 0.3 mg/kgKG
+        )
+
+        sulfena_block = pbs.td.dtSulfenta(input1=u_expr_sulfenta, params=params)
+
+        kk, xx, bo = pbs.td.blocksimulation(int(90/T))
+
+
+def apx(x, x0, eps=1e-3):
+    """
+    express condition that x \approx x0
+    """
+
+    return (sp.Abs(x - x0) < eps)
