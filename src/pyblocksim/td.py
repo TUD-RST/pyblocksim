@@ -396,12 +396,20 @@ def gen_global_rhs():
 
         ds.all_state_vars.extend(state_vars)
 
-        rhs_expr2 = [elt.subs(rplmts) for elt in rhs_expr]
+        rhs_expr2 = []
+        for elt in rhs_expr:
+            try:
+                rhs_expr2.append(elt.subs(rplmts))
+            except AttributeError:
+                assert sp.Number(elt) == elt
+                rhs_expr2.append(elt)
+                continue
+
         ds.global_rhs_expr.extend(rhs_expr2)
 
+    assert len(ds.global_rhs_expr) == len(ds.all_state_vars)
     ds.rhs_func = st.expr_to_func([k, *ds.all_state_vars], ds.global_rhs_expr, modules="numpy")
 
-    # IPS()
     return ds.rhs_func
 
 
