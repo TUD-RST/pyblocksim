@@ -145,6 +145,7 @@ class StaticBlock(TDBlock):
         return self.output_expr
 
 
+# discrete step time
 T = 0.1
 
 ####
@@ -452,7 +453,7 @@ class dtRelaxoBlock(new_TDBlock(5)):
 
 class dtSulfenta(new_TDBlock(5)):
     """
-    This block models pain suppression with sulfentanil
+    This block models pain suppression with Sulfentanil
     """
 
     def rhs(self, k: int, state: List) -> List:
@@ -518,6 +519,57 @@ class dtSulfenta(new_TDBlock(5)):
 
     def output(self):
         return self.x1
+
+
+
+class dtAcrinor(new_TDBlock(5)):
+    """
+    This block models blood pressure increase due to Acrinor
+    """
+
+    def rhs(self, k: int, state: List) -> List:
+
+        # time to exponentially rise 75%
+        assert "T_75" in self.params
+        assert "T_plateau" in self.params
+        assert "down_slope" in self.params
+        assert self.down_slope < 0
+
+        # gain in mmHg/ml (not dependent on body weight)
+        # TODO: this has to be calculated as percentage (see red Text in pptx)
+        assert "dose_gain" in self.params
+
+        # assumptions:
+        # next nonzero input not in rising phase
+        # if next nonzero input in plateau or downslope phase this has to be handled differently (second element)
+
+        x1, x2_integrator, x3_PT1, x4, x5_debug  = self.state_vars
+
+        # conventional time constant for exponential rising
+        T1 = self.T_75/np.log(4)
+
+
+        # TODO: u1 value
+        # absolute_map_increase must be calculated according characteristic curve and current MAP
+        absolute_map_increase = self.u1
+
+        e1 = np.exp(-T/T1)
+        countdown = 0
+
+        x1_new = x3_PT1 - countdown
+        x2_new = x2_integrator + absolute_map_increase
+        x3_new = e1*x3_PT1 + 1*(1-e1)*x2_new
+        x4_new = 0
+        x5_debug_new = 0
+
+        res = [x1_new, x2_new, x3_new, x4_new, x5_debug_new]
+        return res
+
+
+    def output(self):
+        return self.x1
+
+
 
 
 
