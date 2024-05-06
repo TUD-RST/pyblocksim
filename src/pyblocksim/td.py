@@ -522,28 +522,46 @@ class dtSulfenta(new_TDBlock(5)):
 
 
 
-class dtAcrinor(new_TDBlock(5)):
+def apx(x, x0, eps=1e-3):
+    """
+    express condition that x \approx x0
+    """
+
+    return (sp.Abs(x - x0) < eps)
+
+
+
+N_acrinor_counters = 3
+class dtAcrinor(new_TDBlock(5 + N_acrinor_counters*2)):
     """
     This block models blood pressure increase due to Acrinor
     """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.non_counter_states = self.state_vars[:len(self.state_vars)-2*N_acrinor_counters]
+        self.counter_states = self.state_vars[len(self.state_vars)-2*N_acrinor_counters:]
+        self.n_counters = N_acrinor_counters
 
     def rhs(self, k: int, state: List) -> List:
 
         # time to exponentially rise 75%
         assert "T_75" in self.params
         assert "T_plateau" in self.params
+        assert "body_mass" in self.params
         assert "down_slope" in self.params
         assert self.down_slope < 0
 
-        # gain in mmHg/ml (not dependent on body weight)
+        # gain in mmHg/(ml/kgG)
         # TODO: this has to be calculated as percentage (see red Text in pptx)
         assert "dose_gain" in self.params
 
         # assumptions:
         # next nonzero input not in rising phase
-        # if next nonzero input in plateau or downslope phase this has to be handled differently (second element)
+        # if next nonzero input in plateau or down_slope phase this has to be handled differently (second element)
 
-        x1, x2_integrator, x3_PT1, x4, x5_debug  = self.state_vars
+        x1, x2_integrator, x3_PT1, x4_counter_idx, x5_debug  = self.non_counter_states
 
         # conventional time constant for exponential rising
         T1 = self.T_75/np.log(4)
@@ -559,17 +577,26 @@ class dtAcrinor(new_TDBlock(5)):
         x1_new = x3_PT1 - countdown
         x2_new = x2_integrator + absolute_map_increase
         x3_new = e1*x3_PT1 + 1*(1-e1)*x2_new
-        x4_new = 0
+
+        # increase the counter index for every nonzero input
+        x4_new = x4_counter_idx + sp.Piecewise((1, absolute_map_increase >0), (0, True)) % self.n_counters
         x5_debug_new = 0
 
-        res = [x1_new, x2_new, x3_new, x4_new, x5_debug_new]
+        for i in range(self.n_counters):
+            counter_value = self.counter_states[2*i]
+            k_start = self.counter_states[2*i+1]
+
+            self.counter_states[2*i] = counter_value + absolute_map_increase*sp.Piecewise((1, apx(x4_new, i)), (0, True))
+            k_start += 0
+
+        new_counter_states = self.counter_states
+
+        res = [x1_new, x2_new, x3_new, x4_new, x5_debug_new] + new_counter_states
         return res
 
 
     def output(self):
         return self.x1
-
-
 
 
 
