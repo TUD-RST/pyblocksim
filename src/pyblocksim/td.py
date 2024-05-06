@@ -5,6 +5,7 @@ This module contains a toolbox to construct, simulate and postprocess a graph of
 from typing import List
 import numpy as np
 import sympy as sp
+from sympy.utilities.lambdify import implemented_function
 
 import symbtools as st
 
@@ -530,6 +531,14 @@ def apx(x, x0, eps=1e-3):
     return (sp.Abs(x - x0) < eps)
 
 
+def tmp_eq_fnc(x4, i, res):
+    if x4 == i:
+        return res
+    else:
+        return 0
+
+eq_fnc = implemented_function(f"eq_fnc", tmp_eq_fnc)
+
 
 N_acrinor_counters = 3
 class dtAcrinor(new_TDBlock(5 + N_acrinor_counters*2)):
@@ -586,7 +595,9 @@ class dtAcrinor(new_TDBlock(5 + N_acrinor_counters*2)):
             counter_value = self.counter_states[2*i]
             k_start = self.counter_states[2*i+1]
 
-            self.counter_states[2*i] = counter_value + absolute_map_increase*sp.Piecewise((1, apx(x4_new, i)), (0, True))
+
+            # next step: implement a dedicated counter function for loading and unloading and error handling
+            self.counter_states[2*i] = counter_value + eq_fnc(x4_counter_idx, i, absolute_map_increase)
             k_start += 0
 
         new_counter_states = self.counter_states
