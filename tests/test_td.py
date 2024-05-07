@@ -158,10 +158,10 @@ class TestTD1(unittest.TestCase):
         u_func = ufunc = st.expr_to_func(t, u_expr_sulfenta)
 
         params = dict(
-            rise_time=5,
-            down_slope=.8/15,
-            active_time_coeff=100,
-            dose_gain=0.5/0.3  # achieve output of 0.5 for 0.3 mg/kgKG
+            rise_time = 5,
+            down_slope = -.8/15,
+            active_time_coeff = 100,
+            dose_gain = 0.5/0.3  # achieve output of 0.5 for 0.3 mg/kgKG
         )
 
         sulfena_block = pbs.td.dtSulfenta(input1=u_expr_sulfenta, params=params)
