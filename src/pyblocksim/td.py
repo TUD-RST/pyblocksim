@@ -522,15 +522,6 @@ class dtSulfenta(new_TDBlock(5)):
         return self.x1
 
 
-
-def apx(x, x0, eps=1e-3):
-    """
-    express condition that x \approx x0
-    """
-
-    return (sp.Abs(x - x0) < eps)
-
-
 def tmp_eq_fnc(x4, i, res):
     if x4 == i:
         return res
@@ -580,27 +571,63 @@ class dtAcrinor(new_TDBlock(5 + N_acrinor_counters*2)):
         # absolute_map_increase must be calculated according characteristic curve and current MAP
         absolute_map_increase = self.u1
 
+        # functions for handling the counters
+        def counter_func_imp(counter_state, counter_k_start, k, counter_index_state, i, initial_value):
+            # calculate the new counter state
+            if counter_index_state == i and initial_value > 0:
+                # if counter state is newly loaded it should be zero before
+                assert counter_state == 0
+                return initial_value
+
+            if k >= counter_k_start:
+                res = counter_state + self.down_slope*0.01
+                if res < 0:
+                    res = 0
+                return res
+            return counter_state
+
+        counter_func = implemented_function(f"counter_func", counter_func_imp)
+
+
+        def counter_start_func_imp(counter_k_start, k, counter_index_state, i, initial_value):
+
+            if counter_index_state == i and initial_value > 0:
+                # the counter k_start should be set
+                return k + self.T_plateau/T
+
+            # change nothing
+            return counter_k_start
+
+        counter_start_func = implemented_function(f"counter_start_func", counter_start_func_imp)
+
+        # this acts as the integrator
+        counter_sum = 0
+        for i in range(self.n_counters):
+
+            # counter_value for index i
+            self.counter_states[2*i] = counter_func(
+                self.counter_states[2*i], self.counter_states[2*i + 1], k, x4_counter_idx, i, absolute_map_increase
+            )
+
+            counter_sum += self.counter_states[2*i]
+
+            # k_start value for index i
+            self.counter_states[2*i + 1] = counter_start_func(
+                self.counter_states[2*i + 1], k, x4_counter_idx, i, absolute_map_increase
+            )
+
+        new_counter_states = self.counter_states
+
         e1 = np.exp(-T/T1)
         countdown = 0
 
         x1_new = x3_PT1 - countdown
-        x2_new = x2_integrator + absolute_map_increase
-        x3_new = e1*x3_PT1 + 1*(1-e1)*x2_new
+        x2_new = 0 # x2_integrator + absolute_map_increase
+        x3_new = e1*x3_PT1 + 1*(1-e1)*counter_sum
 
         # increase the counter index for every nonzero input
         x4_new = x4_counter_idx + sp.Piecewise((1, absolute_map_increase >0), (0, True)) % self.n_counters
         x5_debug_new = 0
-
-        for i in range(self.n_counters):
-            counter_value = self.counter_states[2*i]
-            k_start = self.counter_states[2*i+1]
-
-
-            # next step: implement a dedicated counter function for loading and unloading and error handling
-            self.counter_states[2*i] = counter_value + eq_fnc(x4_counter_idx, i, absolute_map_increase)
-            k_start += 0
-
-        new_counter_states = self.counter_states
 
         res = [x1_new, x2_new, x3_new, x4_new, x5_debug_new] + new_counter_states
         return res
