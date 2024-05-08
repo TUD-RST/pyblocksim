@@ -19,6 +19,21 @@ k = sp.Symbol("k")
 # this will be replaced by k*T in the final equations
 t = sp.Symbol("t")
 
+loop_symbol_iterator = sp.numbered_symbols("loop")
+loop_mappings = {}
+
+
+# TODO: write unittest for this mechanism
+def get_loop_symbol():
+    ls = next(loop_symbol_iterator)
+    loop_mappings[ls] = None
+    return ls
+
+
+def set_loop_symbol(ls, expr):
+    assert loop_mappings[ls] is None
+    loop_mappings[ls] = expr
+
 
 class DataStore:
     instance = None
@@ -59,7 +74,7 @@ class TDBlock:
     n_states = None
     instance_counter: int = None
 
-    def __init__(self, name: str = None, input1=None, params=None):
+    def __init__(self, name: str = None, input1=None, params=None, **kwargs):
         # increment the correct class attribute
         type(self).instance_counter += 1
         self.state_vars = ds.get_state_vars(self.n_states)
@@ -72,7 +87,14 @@ class TDBlock:
             input1 = 0
         self.u1, = self.input_expr_list = [input1]
 
-        # TODO: support multiple scalar inputs
+        i = 1
+        for key, value in kwargs.items():
+            i += 1
+            # assume key like input3
+            assert key.startswith("input")
+            assert i == int(key.replace("input", ""))
+            setattr(self, f"u{i}", value)
+            self.input_expr_list.append(value)
 
         if params is None:
             params = {}
@@ -530,6 +552,14 @@ def tmp_eq_fnc(x4, i, res):
 
 eq_fnc = implemented_function(f"eq_fnc", tmp_eq_fnc)
 
+class dtDelay1(new_TDBlock(1)):
+    def rhs(self, k: int, state: List) -> List:
+        x1, = self.state_vars
+        new_x1 = x1 + self.u1
+        return [new_x1]
+
+    def output(self):
+        return self.x1
 
 N_acrinor_counters = 3
 class dtAcrinor(new_TDBlock(5 + N_acrinor_counters*2)):
@@ -556,6 +586,9 @@ class dtAcrinor(new_TDBlock(5 + N_acrinor_counters*2)):
         # gain in mmHg/(ml/kgG)
         # TODO: this has to be calculated as percentage (see red Text in pptx)
         assert "dose_gain" in self.params
+
+        # assume self.u2 is the current system MAP
+        assert isinstance(self.u2, sp.Expr)
 
         # assumptions:
         # next nonzero input not in rising phase
@@ -677,6 +710,10 @@ def gen_global_rhs():
     ds.all_state_vars = []
 
     rplmts = [(t, k*T)]
+    rplmts.extend(loop_mappings.items())
+
+    # check that none of the target expressions are None
+    assert None not in list(zip(*rplmts))[1]
 
     for block_name, state_vars in ds.state_var_mapping.items():
         block_instance: TDBlock = ds.block_instances[block_name]
