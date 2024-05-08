@@ -561,6 +561,7 @@ class dtDelay1(new_TDBlock(1)):
     def output(self):
         return self.x1
 
+
 N_acrinor_counters = 3
 class dtAcrinor(new_TDBlock(5 + N_acrinor_counters*2)):
     """
@@ -600,20 +601,21 @@ class dtAcrinor(new_TDBlock(5 + N_acrinor_counters*2)):
         T1 = self.T_75/np.log(4)
 
 
-        # TODO: u1 value
         # absolute_map_increase must be calculated according characteristic curve and current MAP
-        absolute_map_increase = self.u1
+        # TODO: !! This is wrong (but why?)
+        absolute_map_increase = self.u2*self.dose_gain*self.u2
 
         # functions for handling the counters
         def counter_func_imp(counter_state, counter_k_start, k, counter_index_state, i, initial_value):
             # calculate the new counter state
             if counter_index_state == i and initial_value > 0:
                 # if counter state is newly loaded it should be zero before
+                print(f"new iv, {initial_value}")
                 assert counter_state == 0
                 return initial_value
 
             if k >= counter_k_start:
-                res = counter_state + self.down_slope*0.01
+                res = counter_state + self.down_slope
                 if res < 0:
                     res = 0
                 return res
