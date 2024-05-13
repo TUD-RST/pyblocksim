@@ -555,11 +555,19 @@ eq_fnc = implemented_function(f"eq_fnc", tmp_eq_fnc)
 class dtDelay1(new_TDBlock(1)):
     def rhs(self, k: int, state: List) -> List:
         x1, = self.state_vars
-        new_x1 = x1 + self.u1
+        new_x1 = self.u1
         return [new_x1]
 
     def output(self):
         return self.x1
+
+def debug_func_imp(cond, *args, **kwargs):
+    print(args)
+    print(kwargs)
+    return 0
+
+debug_func = implemented_function(f"debug_func", debug_func_imp)
+
 
 
 N_acrinor_counters = 3
