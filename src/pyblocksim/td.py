@@ -610,8 +610,8 @@ class dtAcrinor(new_TDBlock(5 + N_acrinor_counters*2)):
 
 
         # absolute_map_increase must be calculated according characteristic curve and current MAP
-        # TODO: !! This is wrong (but why?)
-        absolute_map_increase = self.u2*self.dose_gain*self.u2
+        # u1: dose of current bolus, u2: current MAP
+        absolute_map_increase = self.u1*self.dose_gain/self.body_mass*self.u2
 
         # functions for handling the counters
         def counter_func_imp(counter_state, counter_k_start, k, counter_index_state, i, initial_value):
@@ -670,7 +670,7 @@ class dtAcrinor(new_TDBlock(5 + N_acrinor_counters*2)):
 
         # increase the counter index for every nonzero input
         x4_new = x4_counter_idx + sp.Piecewise((1, absolute_map_increase >0), (0, True)) % self.n_counters
-        x5_debug_new = 0
+        x5_debug_new = 0 # debug_func(self.u1 > 0, k, self.u2, "k,u2")
 
         res = [x1_new, x2_new, x3_new, x4_new, x5_debug_new] + new_counter_states
         return res
