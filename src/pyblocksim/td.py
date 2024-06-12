@@ -569,7 +569,8 @@ def debug_func_imp(cond, *args, **kwargs):
 debug_func = implemented_function(f"debug_func", debug_func_imp)
 
 
-
+# This determines how many overlapping acrinor bolus doses can be modelled
+# Should be increased to 10
 N_acrinor_counters = 3
 class dtAcrinor(new_TDBlock(5 + N_acrinor_counters*2)):
     """
