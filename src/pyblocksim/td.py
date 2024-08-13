@@ -681,6 +681,45 @@ class dtAcrinor(new_TDBlock(5 + N_acrinor_counters*2)):
         return self.x1
 
 
+N_propofol_counters = 3
+class dtPropofolBolus(new_TDBlock(5 + N_propofol_counters*2)):
+    """
+    This block models blood pressure increase due to Propofol bolus doses
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.non_counter_states = self.state_vars[:len(self.state_vars)-2*N_propofol_counters]
+        self.counter_states = self.state_vars[len(self.state_vars)-2*N_propofol_counters:]
+
+
+    def propofol_bolus_sensitivity_dynamics(self, t):
+        """
+        :param t:    time since last bolus
+        """
+
+        k = 0.52175
+        maxval = 1.26
+
+        t_peak = 1.5
+
+        f1 = - k / (2 + np.exp(10*t - 5)) + maxval
+        f2 = k / (2 + np.exp(2.5*t - 8)) + 1
+
+        return f1*(t<t_peak) + f2*(t>=t_peak)
+
+    def propofol_bolus_static_values(self, dose: float):
+        """
+        :param dose:    specific dose in mg/kgBW
+        :returns:       effect_of_medication (between 0 and 1)
+
+        """
+        k = -0.34655
+        effect_of_medication = 1 - np.exp(k*dose)
+        return effect_of_medication
+
+
 
 def limit(x, xmin=0, xmax=1, ymin=0, ymax=1):
 
