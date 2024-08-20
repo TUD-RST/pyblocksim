@@ -581,7 +581,10 @@ class dtAcrinor(new_TDBlock(5 + N_acrinor_counters*2)):
         super().__init__(*args, **kwargs)
 
         self.non_counter_states = self.state_vars[:len(self.state_vars)-2*N_acrinor_counters]
-        self.counter_states = self.state_vars[len(self.state_vars)-2*N_acrinor_counters:]
+        self.counter_state_vars = self.state_vars[len(self.state_vars)-2*N_acrinor_counters:]
+
+        # this variable will later be overwritten with expressions (todo: is this intended?)
+        self.counter_states = self.counter_state_vars
         self.n_counters = N_acrinor_counters
 
     def rhs(self, k: int, state: List) -> List:
@@ -609,31 +612,75 @@ class dtAcrinor(new_TDBlock(5 + N_acrinor_counters*2)):
         # conventional time constant for exponential rising
         T1 = self.T_75/np.log(4)
 
-
+        # absolute_map_increase will be the plateau value of the curve
         # absolute_map_increase must be calculated according characteristic curve and current MAP
         # u1: dose of current bolus, u2: current MAP
         absolute_map_increase = self.u1*self.dose_gain/self.body_mass*self.u2
 
+        """
+        The counter mechanism works like this:
+
+        - Every counter is associated with two scalar states
+        - c0 is associated with self.counter_states[0] and self.counter_states[1]
+        - self.counter_states[0]
+        - self.counter_states[1]
+        - all counters start inactive; if c0 gets activated self.counter_states[0] gets a nonzero value
+        - in every time step: all counter_states have to be updated, because of the paradigm:
+            new_total_state := state_func(current_total_state)
+        - if in time step k the input (`initial_value`) is non-zero the counter which is associated with
+            counter_index_state gets prepared. More precisely two things happen (assuming c0 is the one):
+            - `counter_func` -> load initial value into self.counter_states[0]
+            - `counter_start_func` -> load the index into self.counter_states[1] at which the counter
+                actually will start to count down (after T_plateau is over)
+        """
+
         # functions for handling the counters
         def counter_func_imp(counter_state, counter_k_start, k, counter_index_state, i, initial_value):
-            # calculate the new counter state
+            """
+            :param counter_state:   float; current value of the counter
+            :param counter_k_start: int; time step index when this counter started
+            :param k:               int; current time step index
+            :param counter_index_state:
+                                    int: index which counter should be activated next
+                                    (allows to cycle through the counters)
+            :param i:               int; index which counter is currently considered in the counter-loop
+            :param initial_value:   float; value with which the counter is initialized
+            """
+            # check if the counter-loop (i) is considering the counter which should be activated next
             if counter_index_state == i and initial_value > 0:
+
                 # if counter state is newly loaded it should be zero before
-                print(f"new iv, {initial_value}")
+                # print(f"{k=}, new iv: {initial_value}")
                 assert counter_state == 0
+
+                # assign the initial value to the counter_state
                 return initial_value
 
-            if k >= counter_k_start:
+            # check if the counter (i) is currently running
+            if (counter_state > 0) and (k >= counter_k_start):
+
+                # counter is assumed to be counting down, thus down_slope is < 0
                 res = counter_state + self.down_slope
                 if res < 0:
                     res = 0
                 return res
+
+            # if the counter is not running, do not change the state
             return counter_state
 
+        # convert the python-function into a applicable sympy function
         counter_func = implemented_function(f"counter_func", counter_func_imp)
 
-
         def counter_start_func_imp(counter_k_start, k, counter_index_state, i, initial_value):
+            """
+            :param counter_k_start: int; time step index when this counter started
+            :param k:               int; current time step index
+            :param counter_index_state:
+                                    int: index which counter should be activated next
+                                    (allows to cycle through the counters)
+            :param i:               int; index which counter is currently considered in the counter-loop
+            :param initial_value:   float; value with which the counter is initialized
+            """
 
             if counter_index_state == i and initial_value > 0:
                 # the counter k_start should be set
@@ -646,6 +693,8 @@ class dtAcrinor(new_TDBlock(5 + N_acrinor_counters*2)):
 
         # this acts as the integrator
         counter_sum = 0
+
+        # the counter-loop
         for i in range(self.n_counters):
 
             # counter_value for index i
