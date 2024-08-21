@@ -13,7 +13,7 @@ class TestTD1(unittest.TestCase):
     def setUp(self):
         pbs.restart()
 
-    def test_limit1(self):
+    def test_01__limit1(self):
 
         x = pbs.td.sp.Symbol("x")
         expr = pbs.td.limit(x, -3, 7, -1, 4)
@@ -33,7 +33,7 @@ class TestTD1(unittest.TestCase):
         self.assertEqual(fnc(7.1), 4)
 
 
-    def test_block_construction1(self):
+    def test_02__block_construction1(self):
 
         block_class = pbs.td.new_TDBlock(2)
         dtPT1_1 = pbs.td.dtPT1(params=dict(K=1, T1=1))
@@ -44,7 +44,7 @@ class TestTD1(unittest.TestCase):
 
         self.assertEqual(q.x2.name, "x4")
 
-    def test_block_simulation1(self):
+    def test_03__block_simulation1(self):
         u_amplitude = 10
         u_step_time = 1
         T1 = 1
@@ -78,7 +78,14 @@ class TestTD1(unittest.TestCase):
         # evaluate 63% criterion
         self.assertAlmostEqual(xx[eval_k, 0], (1 - np.exp(-1))*u_amplitude)
 
-    def test_block_simulation2(self):
+        # now simulate again but with sympy_to_c
+        kk2, xx2, bo = pbs.td.blocksimulation(100, rhs_options={"use_sp2c": True})
+        self.assertAlmostEqual(xx2[eval_k, 0], (1 - np.exp(-1))*u_amplitude)
+
+        # compare lambdify-result and c-result
+        self.assertTrue(np.allclose(xx - xx2, 0))
+
+    def test_04__block_simulation2(self):
         # now with static block
         u_amplitude = 10
         u_step_time = 1
@@ -88,7 +95,6 @@ class TestTD1(unittest.TestCase):
         dtPT1_2 = pbs.td.dtPT1(input1=dtPT1_1.Y, params=dict(K=2, T1=T1))
 
         static_block = pbs.td.StaticBlock(output_expr=dtPT1_1.Y + dtPT1_2.Y**2)
-
 
         kk, xx, bo = pbs.td.blocksimulation(100)
 
@@ -102,14 +108,17 @@ class TestTD1(unittest.TestCase):
             plt.grid()
             plt.show()
 
-        eval_k = int(u_step_time + T1/pbs.td.T)
-
         # evaluate correct static calculation
         self.assertGreater(bo[static_block][-1], 409)
         self.assertLess(bo[static_block][-1], 410)
 
+        # now simulate again but with sympy_to_c
+        kk2, xx2, bo = pbs.td.blocksimulation(100, rhs_options={"use_sp2c": True})
 
-    def test_block_DirectionSensitiveSigmoid(self):
+        # compare lambdify-result and c-result
+        self.assertTrue(np.allclose(xx - xx2, 0))
+
+    def test_block_05a__DirectionSensitiveSigmoid(self):
 
         T = pbs.td.T
         k = pbs.td.k
@@ -127,7 +136,8 @@ class TestTD1(unittest.TestCase):
             params=dict(K=1, T_trans_pos=T_trans_pos, T_trans_neg=T_trans_neg, sens=.1, f_wait_neg=0.3)
         )
 
-        kk, xx, bo = pbs.td.blocksimulation(int(step2 + T_trans_neg/T)+10)
+        N_steps = int(step2 + T_trans_neg/T)+10
+        kk, xx, bo = pbs.td.blocksimulation(N_steps)
 
         steps_start = np.r_[step1*T, step2*T]
         steps_end = steps_start + np.r_[T_trans_pos, T_trans_neg]
@@ -140,8 +150,13 @@ class TestTD1(unittest.TestCase):
             plt.grid()
             plt.show()
 
-    def test_block_Sulfenta(self):
+        # now simulate again but with sympy_to_c
+        kk2, xx2, bo = pbs.td.blocksimulation(N_steps, rhs_options={"use_sp2c": True})
 
+        # compare lambdify-result and c-result
+        self.assertTrue(np.allclose(xx - xx2, 0))
+
+    def test_block_05b__Sufenta(self):
 
         from ipydex import Container
 
@@ -154,8 +169,8 @@ class TestTD1(unittest.TestCase):
         T_end = 120
         tt = np.arange(0, int(T_end/T) + 1)*T
 
-        u_expr_sulfenta = sp.Piecewise((dc.cr1, apx(t, 5)), (dc.cr2, apx(t, 40)), (0, True))
-        u_func = ufunc = st.expr_to_func(t, u_expr_sulfenta)
+        u_expr_sufenta = sp.Piecewise((dc.cr1, apx(t, 5)), (dc.cr2, apx(t, 40)), (0, True))
+        u_func = st.expr_to_func(t, u_expr_sufenta)
 
         params = dict(
             rise_time = 5,
@@ -164,9 +179,25 @@ class TestTD1(unittest.TestCase):
             dose_gain = 0.5/0.3  # achieve output of 0.5 for 0.3 mg/kgKG
         )
 
-        sulfena_block = pbs.td.dtSulfenta(input1=u_expr_sulfenta, params=params)
+        sufenta_block = pbs.td.dtSulfenta(input1=u_expr_sufenta, params=params)
 
-        kk, xx, bo = pbs.td.blocksimulation(int(90/T))
+
+        N_steps = int(90/T)
+        kk, xx, bo = pbs.td.blocksimulation(N_steps)
+
+        # now simulate again but with sympy_to_c
+        kk2, xx2, bo = pbs.td.blocksimulation(N_steps, rhs_options={"use_sp2c": True})
+
+        # compare lambdify-result and c-result
+        self.assertTrue(np.allclose(xx - xx2, 0))
+
+
+
+# #################################################################################################
+#
+# auxiliary functions
+#
+# #################################################################################################
 
 
 def apx(x, x0, eps=1e-3):

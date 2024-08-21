@@ -781,10 +781,13 @@ def limit(x, xmin=0, xmax=1, ymin=0, ymax=1):
     return sp.Piecewise((ymin, x < xmin), (new_x_expr, x < xmax), (ymax, True))
 
 
-def blocksimulation(k_end):
+def blocksimulation(k_end, rhs_options=None):
+
+    if rhs_options is None:
+        rhs_options = {}
 
     # generate equation system
-    rhs_func = gen_global_rhs()
+    rhs_func = gen_global_rhs(**rhs_options)
     initial_state = [0]*len(ds.all_state_vars)
 
     # solve equation system
@@ -803,7 +806,11 @@ def blocksimulation(k_end):
     return kk_num, ds.state_history, block_outputs
 
 
-def gen_global_rhs():
+def gen_global_rhs(use_sp2c=False, use_existing_so=False):
+    """
+    :param use_sp2c:            bool; whether to use sympy_to_c (instead of lambdify)
+    :param use_existing_so:     bool; whether to reuse shared object file if it exists
+    """
 
     ds.global_rhs_expr = []
     ds.all_state_vars = []
@@ -836,7 +843,14 @@ def gen_global_rhs():
             block_instance.output_expr = block_instance.output_expr.subs(rplmts)
 
     assert len(ds.global_rhs_expr) == len(ds.all_state_vars)
-    ds.rhs_func = st.expr_to_func([k, *ds.all_state_vars], ds.global_rhs_expr, modules="numpy")
+
+    vars = [k, *ds.all_state_vars]
+    if use_sp2c:
+        import sympy_to_c as sp2c
+
+        ds.rhs_func = sp2c.convert_to_c(vars, ds.global_rhs_expr, use_existing_so=use_existing_so)
+    else:
+        ds.rhs_func = st.expr_to_func(vars, ds.global_rhs_expr, modules="numpy")
 
     return ds.rhs_func
 
