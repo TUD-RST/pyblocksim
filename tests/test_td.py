@@ -179,7 +179,7 @@ class TestTD1(unittest.TestCase):
             dose_gain = 0.5/0.3  # achieve output of 0.5 for 0.3 mg/kgKG
         )
 
-        sufenta_block = pbs.td.dtSulfenta(input1=u_expr_sufenta, params=params)
+        sufenta_block = pbs.td.dtSufenta(input1=u_expr_sufenta, params=params)
 
 
         N_steps = int(90/T)

@@ -474,9 +474,9 @@ class dtRelaxoBlock(new_TDBlock(5)):
         return 1 - self.x1
 
 
-class dtSulfenta(new_TDBlock(5)):
+class dtSufenta(new_TDBlock(5)):
     """
-    This block models pain suppression with Sulfentanil
+    This block models pain suppression with Sufentanil
     """
 
     def rhs(self, k: int, state: List) -> List:
@@ -569,23 +569,23 @@ def debug_func_imp(cond, *args, **kwargs):
 debug_func = implemented_function(f"debug_func", debug_func_imp)
 
 
-# This determines how many overlapping acrinor bolus doses can be modelled
+# This determines how many overlapping Akrinor bolus doses can be modelled
 # Should be increased to 10
-N_acrinor_counters = 3
-class dtAcrinor(new_TDBlock(5 + N_acrinor_counters*2)):
+N_akrinor_counters = 3
+class dtAkrinor(new_TDBlock(5 + N_akrinor_counters*2)):
     """
-    This block models blood pressure increase due to Acrinor
+    This block models blood pressure increase due to Akrinor
     """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.non_counter_states = self.state_vars[:len(self.state_vars)-2*N_acrinor_counters]
-        self.counter_state_vars = self.state_vars[len(self.state_vars)-2*N_acrinor_counters:]
+        self.non_counter_states = self.state_vars[:len(self.state_vars)-2*N_akrinor_counters]
+        self.counter_state_vars = self.state_vars[len(self.state_vars)-2*N_akrinor_counters:]
 
         # this variable will later be overwritten with expressions (todo: is this intended?)
         self.counter_states = self.counter_state_vars
-        self.n_counters = N_acrinor_counters
+        self.n_counters = N_akrinor_counters
 
     def rhs(self, k: int, state: List) -> List:
 
@@ -711,14 +711,24 @@ class dtAcrinor(new_TDBlock(5 + N_acrinor_counters*2)):
 
         new_counter_states = self.counter_states
 
+        # T1: time constant of PT1 element, e1: factor for time discrete PT1 element
         e1 = np.exp(-T/T1)
-        countdown = 0
 
-        x1_new = x3_PT1 - countdown
+        x1_new = x3_PT1
         x2_new = 0 # x2_integrator + absolute_map_increase
+
+        # debugging
+        if 0:
+            # save function for debugging
+            print(counter_sum)
+            ds.counter_sum = counter_sum
+            x1_new = sp.Piecewise((x3_PT1, x3_PT1 < counter_sum), (counter_sum, True))
+
+        # counter_sum serves as input signal with stepwise increase and liner decrease
         x3_new = e1*x3_PT1 + 1*(1-e1)*counter_sum
 
-        # increase the counter index for every nonzero input
+        # increase the counter index for every nonzero input, but start at 0 again
+        # if all counters have been used
         x4_new = x4_counter_idx + sp.Piecewise((1, absolute_map_increase >0), (0, True)) % self.n_counters
         x5_debug_new = 0 # debug_func(self.u1 > 0, k, self.u2, "k,u2")
 
@@ -728,6 +738,11 @@ class dtAcrinor(new_TDBlock(5 + N_acrinor_counters*2)):
 
     def output(self):
         return self.x1
+
+
+# for backward compatibility (Notebooks with Typos)
+dtSulfenta = dtSufenta
+dtAcrinor = dtAkrinor
 
 
 N_propofol_counters = 3
