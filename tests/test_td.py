@@ -5,7 +5,7 @@ import numpy as np
 import sympy as sp
 from matplotlib import pyplot as plt
 
-from ipydex import IPS
+from ipydex import Container, IPS
 
 
 
@@ -158,8 +158,6 @@ class TestTD1(unittest.TestCase):
 
     def test_block_05b__Sufenta(self):
 
-        from ipydex import Container
-
         dc = Container()
 
         dc.cr1 = dc.cr2 = 0.3
@@ -181,7 +179,6 @@ class TestTD1(unittest.TestCase):
 
         sufenta_block = pbs.td.dtSufenta(input1=u_expr_sufenta, params=params)
 
-
         N_steps = int(90/T)
         kk, xx, bo = pbs.td.blocksimulation(N_steps)
 
@@ -191,6 +188,55 @@ class TestTD1(unittest.TestCase):
         # compare lambdify-result and c-result
         self.assertTrue(np.allclose(xx - xx2, 0))
 
+    def test_block_05c__Akrinor(self):
+
+        T1 = 5 # dc.t_cr1
+        T2 = 22.5 # dc.t_cr2
+
+        # see notebook 07c_akrinor for where this comes from:
+        acrinor_block_dose_gain = 5.530973451327434
+        T = pbs.td.T
+        t = pbs.t
+
+        body_mass = 70
+
+        relative_dose_akri = 0.02 # dc.cr1
+
+        dose_akri = relative_dose_akri * body_mass
+
+        u_expr_acrinor = sp.Piecewise((dose_akri, apx(t, T1)), (dose_akri, apx(t, T2)), (0, True))
+
+
+        l1 = pbs.td.get_loop_symbol()
+        bp_sum  = pbs.td.StaticBlock(output_expr=60 + l1)
+        bp_delay_block = pbs.td.dtDelay1(input1=bp_sum.Y)
+
+
+        T_end = 90
+
+        params = dict(
+            T_75=5,  # min
+            T_plateau = 30,  # min (including rising phase)
+            down_slope = -1,  # mmHg/min
+            body_mass = 70,
+            dose_gain = acrinor_block_dose_gain, # [1/(ml/kgKG)]
+        )
+
+        acrinor_block = pbs.td.dtAcrinor(input1=u_expr_acrinor, input2=bp_delay_block.Y, params=params)
+        pbs.td.set_loop_symbol(l1, acrinor_block.Y)
+
+        kk, xx, bo = pbs.td.blocksimulation(int(T_end/T))
+
+        if 0:
+            plt.plot(kk*T, bo[bp_sum], label="Akrinor effect")
+            plt.show()
+
+        # output signal:
+
+        y = bo[bp_sum]
+
+        y_expected = np.array([66.5, 73.8])
+        self.assertTrue(np.allclose(y[[199, 349]], y_expected, atol=.1))
 
 
 # #################################################################################################
