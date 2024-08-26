@@ -5,8 +5,7 @@ import numpy as np
 import sympy as sp
 from matplotlib import pyplot as plt
 
-from ipydex import Container, IPS
-
+from ipydex import Container, IPS, activate_ips_on_exception
 
 
 class TestTD1(unittest.TestCase):
@@ -206,11 +205,9 @@ class TestTD1(unittest.TestCase):
 
         u_expr_acrinor = sp.Piecewise((dose_akri, apx(t, T1)), (dose_akri, apx(t, T2)), (0, True))
 
-
         l1 = pbs.td.get_loop_symbol()
         bp_sum  = pbs.td.StaticBlock(output_expr=60 + l1)
         bp_delay_block = pbs.td.dtDelay1(input1=bp_sum.Y)
-
 
         T_end = 90
 
@@ -225,7 +222,15 @@ class TestTD1(unittest.TestCase):
         acrinor_block = pbs.td.dtAcrinor(input1=u_expr_acrinor, input2=bp_delay_block.Y, params=params)
         pbs.td.set_loop_symbol(l1, acrinor_block.Y)
 
-        kk, xx, bo = pbs.td.blocksimulation(int(T_end/T))
+        N_steps = int(T_end/T)
+
+
+        activate_ips_on_exception()
+
+        # first simulate with sympy_to_c
+        kk2, xx2, bo = pbs.td.blocksimulation(N_steps, rhs_options={"use_sp2c": True})
+
+        kk, xx, bo = pbs.td.blocksimulation(N_steps)
 
         if 0:
             plt.plot(kk*T, bo[bp_sum], label="Akrinor effect")
@@ -237,6 +242,9 @@ class TestTD1(unittest.TestCase):
 
         y_expected = np.array([66.5, 73.8])
         self.assertTrue(np.allclose(y[[199, 349]], y_expected, atol=.1))
+
+        # compare lambdify-result and c-result
+        self.assertTrue(np.allclose(xx - xx2, 0))
 
 
 # #################################################################################################

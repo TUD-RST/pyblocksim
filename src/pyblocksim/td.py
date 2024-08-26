@@ -3,6 +3,7 @@ This module contains a toolbox to construct, simulate and postprocess a graph of
 """
 
 from typing import List
+from string import Template
 import numpy as np
 import sympy as sp
 from sympy.utilities.lambdify import implemented_function
@@ -671,6 +672,34 @@ class dtAkrinor(new_TDBlock(5 + N_akrinor_counters*2)):
         # convert the python-function into a applicable sympy function
         counter_func = implemented_function(f"counter_func", counter_func_imp)
 
+        # the following is necessary for fast implementation
+        counter_func.c_implementation = Template("""
+            double counter_func(double counter_state, double counter_k_start, double k, double counter_index_state, double i, double initial_value) {
+                double result;
+                double down_slope = $down_slope;
+                if ((counter_index_state == i) && (initial_value > 0)) {
+                    // assign the initial value to the counter_state
+                    return initial_value;
+                }
+
+                // check if the counter (i) is currently running
+                if ((counter_state > 0) && (k >= counter_k_start)) {
+
+                    // counter is assumed to be counting down, thus down_slope is < 0
+                    result = counter_state + down_slope;
+                    if (result < 0) {
+                        result = 0;
+                    }
+                    return result;
+                }
+
+                // if the counter is not running, do not change the state
+                return counter_state;
+            }
+        """).substitute(down_slope=self.down_slope)
+
+        # the amount of time_steps in the future when the counter will start
+        delta_k = int(self.T_plateau/T)
         def counter_start_func_imp(counter_k_start, k, counter_index_state, i, initial_value):
             """
             :param counter_k_start: int; time step index when this counter started
@@ -684,12 +713,27 @@ class dtAkrinor(new_TDBlock(5 + N_akrinor_counters*2)):
 
             if counter_index_state == i and initial_value > 0:
                 # the counter k_start should be set
-                return k + self.T_plateau/T
+                return k + delta_k
 
             # change nothing
             return counter_k_start
 
         counter_start_func = implemented_function(f"counter_start_func", counter_start_func_imp)
+        counter_start_func.c_implementation = Template("""
+
+            double counter_start_func(double counter_k_start, double k, double counter_index_state, double i, double initial_value) {
+                double delta_k = $delta_k;
+                if ((counter_index_state == i) && (initial_value > 0)) {
+                    // the counter k_start should be set
+                    return k + delta_k;
+                }
+
+                // change nothing
+                return counter_k_start;
+            }
+
+
+        """).substitute(delta_k=delta_k)
 
         # this acts as the integrator
         counter_sum = 0
