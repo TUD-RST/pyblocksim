@@ -250,6 +250,17 @@ class TestTD1(unittest.TestCase):
         # compare lambdify-result and c-result
         self.assertTrue(np.allclose(xx - xx2, 0))
 
+    def test_block_05d__Propofol_bolus(self):
+
+        t = pbs.td.t
+        T = pbs.td.T
+        T_end = 10
+
+        u_expr_propofol_boli = sp.Piecewise((0.5, apx(t, 0)), (1.5, apx(t, 2)), (0, True))
+        N_steps = int(T_end/T)
+        pfl = pbs.td.dtPropofolBolus(input1=u_expr_propofol_boli)
+        kk, xx, bo = pbs.td.blocksimulation(N_steps)
+
 
 # #################################################################################################
 #

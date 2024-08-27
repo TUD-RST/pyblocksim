@@ -599,25 +599,8 @@ def debug_func_imp(cond, *args, **kwargs):
 debug_func = implemented_function(f"debug_func", debug_func_imp)
 
 
-# This determines how many overlapping Akrinor bolus doses can be modelled
-# Should be increased to 10
-N_akrinor_counters = 3
-class dtAkrinor(new_TDBlock(5 + N_akrinor_counters*2)):
-    """
-    This block models blood pressure increase due to Akrinor
-    """
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        self.non_counter_states = self.state_vars[:len(self.state_vars)-2*N_akrinor_counters]
-        self.counter_state_vars = self.state_vars[len(self.state_vars)-2*N_akrinor_counters:]
-
-        # this variable will later be overwritten with expressions (todo: is this intended?)
-        self.counter_states = self.counter_state_vars
-        self.n_counters = N_akrinor_counters
-
-    def __define_counter_func(self):
+class CounterBlockMixin:
+    def _define_counter_func(self):
 
         cached_func = self._implemented_functions.get("counter_func")
         if cached_func is not None:
@@ -688,7 +671,7 @@ class dtAkrinor(new_TDBlock(5 + N_akrinor_counters*2)):
         self._implemented_functions["counter_func"] = counter_func
         return counter_func
 
-    def __define_counter_start_func(self):
+    def _define_counter_start_func(self):
 
         cached_func = self._implemented_functions.get("counter_start_func")
         if cached_func is not None:
@@ -734,6 +717,24 @@ class dtAkrinor(new_TDBlock(5 + N_akrinor_counters*2)):
         self._implemented_functions["counter_start_func"] = counter_start_func
 
         return counter_start_func
+
+
+# This determines how many overlapping Akrinor bolus doses can be modelled
+# Should be increased to 10
+N_akrinor_counters = 3
+class dtAkrinor(new_TDBlock(5 + N_akrinor_counters*2), CounterBlockMixin):
+    """
+    This block models blood pressure increase due to Akrinor
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.non_counter_states = self.state_vars[:len(self.state_vars)-2*N_akrinor_counters]
+        self.counter_state_vars = self.state_vars[len(self.state_vars)-2*N_akrinor_counters:]
+
+        self.counter_states = self.counter_state_vars
+        self.n_counters = N_akrinor_counters
 
     def rhs(self, k: int, state: List) -> List:
 
@@ -782,8 +783,8 @@ class dtAkrinor(new_TDBlock(5 + N_akrinor_counters*2)):
                 actually will start to count down (after T_plateau is over)
         """
         # create/restore functions for handling the counters
-        counter_func = self.__define_counter_func()
-        counter_start_func = self.__define_counter_start_func()
+        counter_func = self._define_counter_func()
+        counter_start_func = self._define_counter_start_func()
 
         # this acts as the integrator
         counter_sum = 0
@@ -828,7 +829,6 @@ class dtAkrinor(new_TDBlock(5 + N_akrinor_counters*2)):
         res = [x1_new, x2_new, x3_new, x4_new, x5_debug_new] + new_counter_states
         return res
 
-
     def output(self):
         return self.x1
 
@@ -839,7 +839,7 @@ dtAcrinor = dtAkrinor
 
 
 N_propofol_counters = 3
-class dtPropofolBolus(new_TDBlock(5 + N_propofol_counters*2)):
+class dtPropofolBolus(new_TDBlock(5 + N_propofol_counters*2), CounterBlockMixin):
     """
     This block models blood pressure increase due to Propofol bolus doses
     """
@@ -849,6 +849,46 @@ class dtPropofolBolus(new_TDBlock(5 + N_propofol_counters*2)):
 
         self.non_counter_states = self.state_vars[:len(self.state_vars)-2*N_propofol_counters]
         self.counter_states = self.state_vars[len(self.state_vars)-2*N_propofol_counters:]
+
+        self.n_counters = N_propofol_counters
+
+        # reduce counters by 1 in each step
+        self.down_slope = -1
+        self.T_plateau = 6
+
+    def rhs(self, k: int, state: List) -> List:
+
+        x1_bp_effect, x2_sensitivity, x3, x4_counter_idx, x5_debug  = self.non_counter_states
+
+        # create/restore functions for handling the counters
+        counter_func = self._define_counter_func()
+        counter_start_func = self._define_counter_start_func()
+
+        # TODO: make this better parameterizable
+        counter_max_val = self.T_plateau/T
+        counter_target_val = sp.Piecewise((counter_max_val, self.u1 > 0), (0, True))
+
+        new_counter_states = [None]*len(self.counter_states)
+        # the counter-loop
+        for i in range(self.n_counters):
+
+            # counter_value for index i
+            new_counter_states[2*i] = counter_func(
+                self.counter_states[2*i], self.counter_states[2*i + 1], k, x4_counter_idx, i, counter_target_val
+            )
+
+            # k_start value for index i
+            new_counter_states[2*i + 1] = counter_start_func(
+                self.counter_states[2*i + 1], k, x4_counter_idx, i, counter_target_val
+            )
+
+        # temporarily only update counters
+        new_state = [x1_bp_effect, x2_sensitivity, x3, x4_counter_idx, x5_debug] + new_counter_states
+
+        return new_state
+
+    def output(self):
+        return self.x2
 
     def propofol_bolus_sensitivity_dynamics(self, t):
         """
