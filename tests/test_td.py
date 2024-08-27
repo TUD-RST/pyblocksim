@@ -224,13 +224,17 @@ class TestTD1(unittest.TestCase):
 
         N_steps = int(T_end/T)
 
+        # activate_ips_on_exception()
 
-        activate_ips_on_exception()
+        # test for a bug that rhs returns different expressions each time
+        test_expr1 = acrinor_block.rhs(0, (0,)*11)[2].args[0].args[1]
+        test_expr2 = acrinor_block.rhs(0, (0,)*11)[2].args[0].args[1]
 
-        # first simulate with sympy_to_c
-        kk2, xx2, bo = pbs.td.blocksimulation(N_steps, rhs_options={"use_sp2c": True})
+        self.assertEqual(test_expr1, test_expr2)
 
+        # for the numeric comparison simulate with sympy_to_c and with lambdify
         kk, xx, bo = pbs.td.blocksimulation(N_steps)
+        kk2, xx2, bo = pbs.td.blocksimulation(N_steps, rhs_options={"use_sp2c": True})
 
         if 0:
             plt.plot(kk*T, bo[bp_sum], label="Akrinor effect")

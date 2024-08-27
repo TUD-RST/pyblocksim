@@ -110,6 +110,9 @@ class TDBlock:
             name = f"{type(self).__name__}__{self.instance_counter}"
         self.name = name
 
+        # store implemented functions (e.g. for counter handling)
+        self._implemented_functions = {}
+
         ds.register_block(self)
 
     def output(self):
@@ -588,54 +591,12 @@ class dtAkrinor(new_TDBlock(5 + N_akrinor_counters*2)):
         self.counter_states = self.counter_state_vars
         self.n_counters = N_akrinor_counters
 
-    def rhs(self, k: int, state: List) -> List:
+    def __define_counter_func(self):
 
-        # time to exponentially rise 75%
-        assert "T_75" in self.params
-        assert "T_plateau" in self.params
-        assert "body_mass" in self.params
-        assert "down_slope" in self.params
-        assert self.down_slope < 0
+        cached_func = self._implemented_functions.get("counter_func")
+        if cached_func is not None:
+            return cached_func
 
-        # gain in mmHg/(ml/kgG)
-        # TODO: this has to be calculated as percentage (see red Text in pptx)
-        assert "dose_gain" in self.params
-
-        # assume self.u2 is the current system MAP
-        assert isinstance(self.u2, sp.Expr)
-
-        # assumptions:
-        # next nonzero input not in rising phase
-        # if next nonzero input in plateau or down_slope phase this has to be handled differently (second element)
-
-        x1, x2_integrator, x3_PT1, x4_counter_idx, x5_debug  = self.non_counter_states
-
-        # conventional time constant for exponential rising
-        T1 = self.T_75/np.log(4)
-
-        # absolute_map_increase will be the plateau value of the curve
-        # absolute_map_increase must be calculated according characteristic curve and current MAP
-        # u1: dose of current bolus, u2: current MAP
-        absolute_map_increase = self.u1*self.dose_gain/self.body_mass*self.u2
-
-        """
-        The counter mechanism works like this:
-
-        - Every counter is associated with two scalar states
-        - c0 is associated with self.counter_states[0] and self.counter_states[1]
-        - self.counter_states[0]
-        - self.counter_states[1]
-        - all counters start inactive; if c0 gets activated self.counter_states[0] gets a nonzero value
-        - in every time step: all counter_states have to be updated, because of the paradigm:
-            new_total_state := state_func(current_total_state)
-        - if in time step k the input (`initial_value`) is non-zero the counter which is associated with
-            counter_index_state gets prepared. More precisely two things happen (assuming c0 is the one):
-            - `counter_func` -> load initial value into self.counter_states[0]
-            - `counter_start_func` -> load the index into self.counter_states[1] at which the counter
-                actually will start to count down (after T_plateau is over)
-        """
-
-        # functions for handling the counters
         def counter_func_imp(counter_state, counter_k_start, k, counter_index_state, i, initial_value):
             """
             :param counter_state:   float; current value of the counter
@@ -698,6 +659,15 @@ class dtAkrinor(new_TDBlock(5 + N_akrinor_counters*2)):
             }
         """).substitute(down_slope=self.down_slope)
 
+        self._implemented_functions["counter_func"] = counter_func
+        return counter_func
+
+    def __define_counter_start_func(self):
+
+        cached_func = self._implemented_functions.get("counter_start_func")
+        if cached_func is not None:
+            return cached_func
+
         # the amount of time_steps in the future when the counter will start
         delta_k = int(self.T_plateau/T)
         def counter_start_func_imp(counter_k_start, k, counter_index_state, i, initial_value):
@@ -735,25 +705,78 @@ class dtAkrinor(new_TDBlock(5 + N_akrinor_counters*2)):
 
         """).substitute(delta_k=delta_k)
 
+        self._implemented_functions["counter_start_func"] = counter_start_func
+
+        return counter_start_func
+
+    def rhs(self, k: int, state: List) -> List:
+
+        # time to exponentially rise 75%
+        assert "T_75" in self.params
+        assert "T_plateau" in self.params
+        assert "body_mass" in self.params
+        assert "down_slope" in self.params
+        assert self.down_slope < 0
+
+        # gain in mmHg/(ml/kgG)
+        # TODO: this has to be calculated as percentage (see red Text in pptx)
+        assert "dose_gain" in self.params
+
+        # assume self.u2 is the current system MAP
+        assert isinstance(self.u2, sp.Expr)
+
+        # assumptions:
+        # next nonzero input not in rising phase
+        # if next nonzero input in plateau or down_slope phase this has to be handled differently (second element)
+
+        x1, x2_integrator, x3_PT1, x4_counter_idx, x5_debug  = self.non_counter_states
+
+        # conventional time constant for exponential rising
+        T1 = self.T_75/np.log(4)
+
+        # absolute_map_increase will be the plateau value of the curve
+        # absolute_map_increase must be calculated according characteristic curve and current MAP
+        # u1: dose of current bolus, u2: current MAP
+        absolute_map_increase = self.u1*self.dose_gain/self.body_mass*self.u2
+
+        """
+        The counter mechanism works like this:
+
+        - Every counter is associated with two scalar states
+        - c0 is associated with self.counter_states[0] and self.counter_states[1]
+        - self.counter_states[0]
+        - self.counter_states[1]
+        - all counters start inactive; if c0 gets activated self.counter_states[0] gets a nonzero value
+        - in every time step: all counter_states have to be updated, because of the paradigm:
+            new_total_state := state_func(current_total_state)
+        - if in time step k the input (`initial_value`) is non-zero the counter which is associated with
+            counter_index_state gets prepared. More precisely two things happen (assuming c0 is the one):
+            - `counter_func` -> load initial value into self.counter_states[0]
+            - `counter_start_func` -> load the index into self.counter_states[1] at which the counter
+                actually will start to count down (after T_plateau is over)
+        """
+        # create/restore functions for handling the counters
+        counter_func = self.__define_counter_func()
+        counter_start_func = self.__define_counter_start_func()
+
         # this acts as the integrator
         counter_sum = 0
 
+        new_counter_states = [None]*len(self.counter_states)
         # the counter-loop
         for i in range(self.n_counters):
 
             # counter_value for index i
-            self.counter_states[2*i] = counter_func(
+            new_counter_states[2*i] = counter_func(
                 self.counter_states[2*i], self.counter_states[2*i + 1], k, x4_counter_idx, i, absolute_map_increase
             )
 
-            counter_sum += self.counter_states[2*i]
+            counter_sum += new_counter_states[2*i]
 
             # k_start value for index i
-            self.counter_states[2*i + 1] = counter_start_func(
+            new_counter_states[2*i + 1] = counter_start_func(
                 self.counter_states[2*i + 1], k, x4_counter_idx, i, absolute_map_increase
             )
-
-        new_counter_states = self.counter_states
 
         # T1: time constant of PT1 element, e1: factor for time discrete PT1 element
         e1 = np.exp(-T/T1)
@@ -875,6 +898,8 @@ def gen_global_rhs(use_sp2c=False, use_existing_so=False):
     ds.all_state_vars = []
 
     rplmts = [(t, k*T)]
+
+    # handle feedback loops
     rplmts.extend(loop_mappings.items())
 
     # check that none of the target expressions are None
