@@ -219,16 +219,16 @@ class TestTD1(unittest.TestCase):
             dose_gain = acrinor_block_dose_gain, # [1/(ml/kgKG)]
         )
 
-        acrinor_block = pbs.td.dtAcrinor(input1=u_expr_acrinor, input2=bp_delay_block.Y, params=params)
-        pbs.td.set_loop_symbol(l1, acrinor_block.Y)
+        akrinor_block = pbs.td.dtAkrinor(input1=u_expr_acrinor, input2=bp_delay_block.Y, params=params)
+        pbs.td.set_loop_symbol(l1, akrinor_block.Y)
 
         N_steps = int(T_end/T)
 
         # activate_ips_on_exception()
 
         # test for a bug that rhs returns different expressions each time
-        test_expr1 = acrinor_block.rhs(0, (0,)*11)[2].args[0].args[1]
-        test_expr2 = acrinor_block.rhs(0, (0,)*11)[2].args[0].args[1]
+        test_expr1 = akrinor_block.rhs(0, (0,)*11)[2].args[0].args[1]
+        test_expr2 = akrinor_block.rhs(0, (0,)*11)[2].args[0].args[1]
 
         self.assertEqual(test_expr1, test_expr2)
 

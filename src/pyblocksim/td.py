@@ -24,6 +24,32 @@ loop_symbol_iterator = sp.numbered_symbols("loop")
 loop_mappings = {}
 
 
+def perform_sympy_monkey_patch_for__is_constant():
+    """
+    This monkey patch is necessary for the following reason:
+    sp.lambdify calls a python printer. Deep down within the printer it must be determined
+    whether an expression is constant or not. Sympy does this by substituting some numbers
+    into the expression and looks for changes. However, we use implemented functions which
+    raise exceptions for some combinations of arguments, but we still want to lambdify them.
+
+    Solution replace the original .is_constant-method with a wrapper which handles our
+    special case.
+    """
+
+    if getattr(sp.Expr, "_orig_is_constant", None) is None:
+        sp.Expr._orig_is_constant = sp.Expr.is_constant
+
+    def new_is_constant(self, *args, **kwargs) -> bool:
+        for func_atoms in self.atoms(sp.core.function.AppliedUndef):
+            if func_atoms.atoms(sp.Symbol):
+                return False
+        return self._orig_is_constant(*args, **kwargs)
+
+    sp.Expr.is_constant = new_is_constant
+
+perform_sympy_monkey_patch_for__is_constant()
+
+
 # TODO: write unittest for this mechanism
 def get_loop_symbol():
     ls = next(loop_symbol_iterator)
@@ -781,17 +807,17 @@ class dtAkrinor(new_TDBlock(5 + N_akrinor_counters*2)):
         # T1: time constant of PT1 element, e1: factor for time discrete PT1 element
         e1 = np.exp(-T/T1)
 
-        x1_new = x3_PT1
+        # old: PT1-like decreasing
+        # x1_new = x3_PT1
+
+        # new: PT1-like increasing, linear decreasing
+        # (this requires the monkey-patch for is_constant (see above))
+        x1_new = sp.Piecewise((x3_PT1, x3_PT1 < counter_sum), (counter_sum, True))
+
+        # currently not used
         x2_new = 0 # x2_integrator + absolute_map_increase
 
-        # debugging
-        if 0:
-            # save function for debugging
-            print(counter_sum)
-            ds.counter_sum = counter_sum
-            x1_new = sp.Piecewise((x3_PT1, x3_PT1 < counter_sum), (counter_sum, True))
-
-        # counter_sum serves as input signal with stepwise increase and liner decrease
+        # counter_sum serves as input signal with stepwise increase and linear decrease
         x3_new = e1*x3_PT1 + 1*(1-e1)*counter_sum
 
         # increase the counter index for every nonzero input, but start at 0 again
@@ -823,7 +849,6 @@ class dtPropofolBolus(new_TDBlock(5 + N_propofol_counters*2)):
 
         self.non_counter_states = self.state_vars[:len(self.state_vars)-2*N_propofol_counters]
         self.counter_states = self.state_vars[len(self.state_vars)-2*N_propofol_counters:]
-
 
     def propofol_bolus_sensitivity_dynamics(self, t):
         """
