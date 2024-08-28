@@ -671,14 +671,14 @@ class CounterBlockMixin:
         self._implemented_functions["counter_func"] = counter_func
         return counter_func
 
-    def _define_counter_start_func(self):
+    def _define_counter_start_func(self, delta_k):
+        ":param delta_k: the amount of time_steps in the future when the counter will start"
 
         cached_func = self._implemented_functions.get("counter_start_func")
         if cached_func is not None:
             return cached_func
 
-        # the amount of time_steps in the future when the counter will start
-        delta_k = int(self.T_plateau/T)
+
         def counter_start_func_imp(counter_k_start, k, counter_index_state, i, initial_value):
             """
             :param counter_k_start: int; time step index when this counter started
@@ -784,7 +784,9 @@ class dtAkrinor(new_TDBlock(5 + N_akrinor_counters*2), CounterBlockMixin):
         """
         # create/restore functions for handling the counters
         counter_func = self._define_counter_func()
-        counter_start_func = self._define_counter_start_func()
+
+        delta_k = int(self.T_plateau/T)
+        counter_start_func = self._define_counter_start_func(delta_k=delta_k)
 
         # this acts as the integrator
         counter_sum = 0
@@ -862,7 +864,11 @@ class dtPropofolBolus(new_TDBlock(5 + N_propofol_counters*2), CounterBlockMixin)
 
         # create/restore functions for handling the counters
         counter_func = self._define_counter_func()
-        counter_start_func = self._define_counter_start_func()
+
+        # the counter should start immediately
+        delta_k = 1
+        counter_start_func = self._define_counter_start_func(delta_k=delta_k)
+
 
         # TODO: make this better parameterizable
         counter_max_val = self.T_plateau/T
@@ -882,8 +888,12 @@ class dtPropofolBolus(new_TDBlock(5 + N_propofol_counters*2), CounterBlockMixin)
                 self.counter_states[2*i + 1], k, x4_counter_idx, i, counter_target_val
             )
 
+        # increase the counter index for every nonzero input, but start at 0 again
+        # if all counters have been used
+        x4_new = x4_counter_idx + sp.Piecewise((1, self.u1 > 0), (0, True)) % self.n_counters
+
         # temporarily only update counters
-        new_state = [x1_bp_effect, x2_sensitivity, x3, x4_counter_idx, x5_debug] + new_counter_states
+        new_state = [x1_bp_effect, x2_sensitivity, x3, x4_new, x5_debug] + new_counter_states
 
         return new_state
 
@@ -999,7 +1009,7 @@ def gen_global_rhs(use_sp2c=False, use_existing_so=False):
 
         ds.rhs_func = sp2c.convert_to_c(vars, ds.global_rhs_expr, use_existing_so=use_existing_so)
     else:
-        ds.rhs_func = st.expr_to_func(vars, ds.global_rhs_expr, modules="numpy")
+        ds.rhs_func = st.expr_to_func(vars, ds.global_rhs_expr, modules="numpy", eltw_vectorize=False)
 
     return ds.rhs_func
 

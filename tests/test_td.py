@@ -252,6 +252,10 @@ class TestTD1(unittest.TestCase):
 
     def test_block_05d__Propofol_bolus(self):
 
+        # for debugging warnings:
+        # import warnings
+        # warnings.filterwarnings("error")
+
         t = pbs.td.t
         T = pbs.td.T
         T_end = 10
@@ -271,7 +275,7 @@ class TestTD1(unittest.TestCase):
 
 def apx(x, x0, eps=1e-3):
     """
-    express condition that x \approx x0
+    express condition that x \\approx x0
     """
 
     return (sp.Abs(x - x0) < eps)
