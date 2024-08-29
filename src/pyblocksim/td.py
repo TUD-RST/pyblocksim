@@ -599,12 +599,41 @@ def debug_func_imp(cond, *args, **kwargs):
 debug_func = implemented_function(f"debug_func", debug_func_imp)
 
 
+class MaxBlockMixin:
+    """
+    Allows to calculate the maximum of a length3-sequence of expressions
+    """
+    def _define_max3_func(self):
+        cached_func = self._implemented_functions.get("max3_func")
+        if cached_func is not None:
+            return cached_func
+
+        def max3_func_imp(a, b, c):
+            return max(a, b, c)
+
+        max3_func = implemented_function("max3_func", max3_func_imp)
+
+        # the following is necessary for fast implementation
+        max3_func.c_implementation = Template("""
+            double max3_func(double a, double b, double c) {
+                double v1, v2;
+                v1 = fmax(a, b);
+                v2 = fmax(b, c);
+                return fmax(v1, v2)
+            }
+        """).substitute(down_slope=self.down_slope)
+
+        self._implemented_functions["max3_func"] = max3_func
+        return max3_func
+
+
 class CounterBlockMixin:
     def _define_counter_func(self):
 
         cached_func = self._implemented_functions.get("counter_func")
         if cached_func is not None:
             return cached_func
+
 
         def counter_func_imp(counter_state, counter_k_start, k, counter_index_state, i, initial_value):
             """
@@ -640,7 +669,7 @@ class CounterBlockMixin:
             return counter_state
 
         # convert the python-function into a applicable sympy function
-        counter_func = implemented_function(f"counter_func", counter_func_imp)
+        counter_func = implemented_function("counter_func", counter_func_imp)
 
         # the following is necessary for fast implementation
         counter_func.c_implementation = Template("""
@@ -825,7 +854,7 @@ class dtAkrinor(new_TDBlock(5 + N_akrinor_counters*2), CounterBlockMixin):
 
         # increase the counter index for every nonzero input, but start at 0 again
         # if all counters have been used
-        x4_new = x4_counter_idx + sp.Piecewise((1, absolute_map_increase >0), (0, True)) % self.n_counters
+        x4_new = (x4_counter_idx + sp.Piecewise((1, absolute_map_increase >0), (0, True))) % self.n_counters
         x5_debug_new = 0 # debug_func(self.u1 > 0, k, self.u2, "k,u2")
 
         res = [x1_new, x2_new, x3_new, x4_new, x5_debug_new] + new_counter_states
@@ -841,7 +870,7 @@ dtAcrinor = dtAkrinor
 
 
 N_propofol_counters = 3
-class dtPropofolBolus(new_TDBlock(5 + N_propofol_counters*2), CounterBlockMixin):
+class dtPropofolBolus(new_TDBlock(5 + N_propofol_counters*2), CounterBlockMixin, MaxBlockMixin):
     """
     This block models blood pressure increase due to Propofol bolus doses
     """
@@ -857,6 +886,15 @@ class dtPropofolBolus(new_TDBlock(5 + N_propofol_counters*2), CounterBlockMixin)
         # reduce counters by 1 in each step
         self.down_slope = -1
         self.T_plateau = 6
+
+        self.propofol_bolus_sensitivity_dynamics_np = st.expr_to_func(
+            t, self.propofol_bolus_sensitivity_dynamics(t), modules="numpy"
+        )
+
+        dose = sp.Symbol("dose")
+        self.propofol_bolus_static_values_np = st.expr_to_func(
+            dose, self.propofol_bolus_static_values(dose), modules="numpy"
+        )
 
     def rhs(self, k: int, state: List) -> List:
 
@@ -875,11 +913,13 @@ class dtPropofolBolus(new_TDBlock(5 + N_propofol_counters*2), CounterBlockMixin)
         counter_target_val = sp.Piecewise((counter_max_val, self.u1 > 0), (0, True))
 
         new_counter_states = [None]*len(self.counter_states)
+        partial_sensitivities = [None]*self.n_counters
+
         # the counter-loop
         for i in range(self.n_counters):
 
             # counter_value for index i
-            new_counter_states[2*i] = counter_func(
+            counter_i = new_counter_states[2*i] = counter_func(
                 self.counter_states[2*i], self.counter_states[2*i + 1], k, x4_counter_idx, i, counter_target_val
             )
 
@@ -888,21 +928,30 @@ class dtPropofolBolus(new_TDBlock(5 + N_propofol_counters*2), CounterBlockMixin)
                 self.counter_states[2*i + 1], k, x4_counter_idx, i, counter_target_val
             )
 
+            counter_time = sp.Piecewise(((counter_max_val - counter_i)*T, counter_i > 0), (0, True))
+            partial_sensitivities[i] = self.propofol_bolus_sensitivity_dynamics(counter_time)
+            # partial_sensitivities[i] = counter_time
+
         # increase the counter index for every nonzero input, but start at 0 again
         # if all counters have been used
-        x4_new = x4_counter_idx + sp.Piecewise((1, self.u1 > 0), (0, True)) % self.n_counters
+        x4_counter_idx_new = (x4_counter_idx + sp.Piecewise((1, self.u1 > 0), (0, True))) % self.n_counters
+
+        max3_func = self._define_max3_func()
+        assert self.n_counters == 3
+        x2_sensitivity_new = max3_func(*partial_sensitivities)
 
         # temporarily only update counters
-        new_state = [x1_bp_effect, x2_sensitivity, x3, x4_new, x5_debug] + new_counter_states
+        new_state = [x1_bp_effect, x2_sensitivity_new, x3, x4_counter_idx_new, x5_debug] + new_counter_states
 
         return new_state
 
     def output(self):
-        return self.x2
+        sensitivity = sp.Piecewise((self.x2, self.x2 > 1), (1, True))
+        return sensitivity
 
     def propofol_bolus_sensitivity_dynamics(self, t):
         """
-        :param t:    time since last bolus
+        :param t:    time since last bolus (sympy expression)
         """
 
         k = 0.52175
@@ -910,10 +959,12 @@ class dtPropofolBolus(new_TDBlock(5 + N_propofol_counters*2), CounterBlockMixin)
 
         t_peak = 1.5
 
-        f1 = - k / (2 + np.exp(10*t - 5)) + maxval
-        f2 = k / (2 + np.exp(2.5*t - 8)) + 1
+        f1 = - k / (2 + sp.exp(10*t - 5)) + maxval
+        f2 = k / (2 + sp.exp(2.5*t - 8)) + 1
 
-        return f1*(t<t_peak) + f2*(t>=t_peak)
+        res = sp.Piecewise((f1, t < t_peak), (f2, True))
+
+        return res
 
     def propofol_bolus_static_values(self, dose: float):
         """
@@ -922,7 +973,7 @@ class dtPropofolBolus(new_TDBlock(5 + N_propofol_counters*2), CounterBlockMixin)
 
         """
         k = -0.34655
-        effect_of_medication = 1 - np.exp(k*dose)
+        effect_of_medication = 1 - sp.exp(k*dose)
         return effect_of_medication
 
 
