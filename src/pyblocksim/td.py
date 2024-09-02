@@ -951,10 +951,8 @@ class dtPropofolBolus(new_TDBlock(5 + 2*N_propofol_counters), CounterBlockMixin,
 
         self.n_counters = N_propofol_counters
 
-        # effect counter (8) is longer then original sensitivity counter (6)
-        # but this does not matter as the sensitivity function is phased out at < 6
-        # anyway
-        self.T_counter = 8
+        # Note: counter is used both for effect and sensitivity
+        self.T_counter = 6
 
         self.propofol_bolus_sensitivity_dynamics_np = st.expr_to_func(
             t, self.propofol_bolus_sensitivity_dynamics(t), modules="numpy"
@@ -964,6 +962,28 @@ class dtPropofolBolus(new_TDBlock(5 + 2*N_propofol_counters), CounterBlockMixin,
         self.propofol_bolus_static_values_np = st.expr_to_func(
             dose, self.propofol_bolus_static_values(dose), modules="numpy"
         )
+
+        self.bp_effect_dynamics_expr = self._generate_effect_dynamics_expr()
+
+    def _generate_effect_dynamics_expr(self):
+        """
+        Generate a piecewise defined polynomial like: _/‾‾\_ (amplitude 1)
+        """
+        Ta = 2
+        Tb = 4
+        Tc = 6
+
+        # rising part
+        poly1 = st.condition_poly(t, (0, 0, 0, 0), (Ta, 1, 0, 0)) ##:
+
+        # falling part
+        poly2 = st.condition_poly(t, (Tb, 1, 0, 0), (Tc, 0, 0, 0)) ##:
+
+        effect_dynamics_expr = sp.Piecewise(
+            (0, t < 0), (poly1, t <= Ta), (1, t <= Tb), (poly2, t <= Tc), (0, True)
+        )
+        return effect_dynamics_expr
+
 
     def rhs(self, k: int, state: List) -> List:
 
@@ -980,6 +1000,7 @@ class dtPropofolBolus(new_TDBlock(5 + 2*N_propofol_counters), CounterBlockMixin,
 
         new_counter_states = [None]*len(self.counter_states)
         partial_sensitivities = [None]*self.n_counters
+        partial_bp_effects = [None]*self.n_counters
 
         # amplitude_func = self._define_amplitude_func() # (self.u1, *self.counter_states)
 
@@ -1009,6 +1030,8 @@ class dtPropofolBolus(new_TDBlock(5 + 2*N_propofol_counters), CounterBlockMixin,
                 (new_amplitude, eq(i, x4_counter_idx)), (0,  eq(current_counter, 0)), (current_amplitude, True)
             )
 
+            partial_bp_effects[i] = self._single_dose_bp_effect(counter_time, current_amplitude)
+
         # increase the counter index for every nonzero input, but start at 0 again
         # if all counters have been used (achieved by modulo (%))
         x4_counter_idx_new = (x4_counter_idx + sp.Piecewise((1, self.u1 > 0), (0, True))) % self.n_counters
@@ -1017,14 +1040,24 @@ class dtPropofolBolus(new_TDBlock(5 + 2*N_propofol_counters), CounterBlockMixin,
         assert self.n_counters == 3
         x2_sensitivity_new = max3_func(*partial_sensitivities)
 
-        # temporarily only update counters
-        new_state = [x1_bp_effect, x2_sensitivity_new, x3, x4_counter_idx_new, x5_debug] + new_counter_states
+        # IPS()
+        x1_bp_effect_new = 100 - 100*sum(partial_bp_effects)
+
+        new_state = [x1_bp_effect_new, x2_sensitivity_new, x3, x4_counter_idx_new, x5_debug] + new_counter_states
 
         return new_state
 
+    def _single_dose_bp_effect(self, counter_time, amplitude):
+
+        res = self.bp_effect_dynamics_expr.subs(t, counter_time)*amplitude
+        return res
+
+
     def output(self):
-        sensitivity = sp.Piecewise((self.x2, self.x2 > 1), (1, True))
-        return sensitivity
+        # sensitivity = sp.Piecewise((self.x2, self.x2 > 1), (1, True))
+        # return sensitivity
+
+        return self.x1
 
     def propofol_bolus_sensitivity_dynamics(self, t):
         """
