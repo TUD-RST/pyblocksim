@@ -43,7 +43,7 @@ class TestTD1(unittest.TestCase):
 
         self.assertEqual(q.x2.name, "x4")
 
-    def test_03__block_simulation1(self):
+    def test_03a__block_simulation1(self):
         u_amplitude = 10
         u_step_time = 1
         T1 = 1
@@ -84,7 +84,7 @@ class TestTD1(unittest.TestCase):
         # compare lambdify-result and c-result
         self.assertTrue(np.allclose(xx - xx2, 0))
 
-    def test_04__block_simulation2(self):
+    def test_03b__block_simulation2(self):
         # now with static block
         u_amplitude = 10
         u_step_time = 1
@@ -116,6 +116,48 @@ class TestTD1(unittest.TestCase):
 
         # compare lambdify-result and c-result
         self.assertTrue(np.allclose(xx - xx2, 0))
+
+    def test_04a__flexible_input_mode(self):
+        """
+        Here we test a mode where the input function is evaluated separately.
+        """
+        T = pbs.td.T
+        u_amplitude = 10
+        u_step_time = 1*T
+        T1 = 1
+        u1_expr = pbs.td.td_step(pbs.td.k, u_step_time/T, u_amplitude)
+
+        dtPT1_1 = pbs.td.dtPT1(input1=u1_expr, params=dict(K=1, T1=T1))
+        dtPT1_2 = pbs.td.dtPT1(input1=dtPT1_1.Y, params=dict(K=2, T1=T1))
+
+        static_block = pbs.td.StaticBlock(output_expr=dtPT1_1.Y + dtPT1_2.Y**2)
+
+        N_steps = int(20/T)
+        kk, xx, bo = pbs.td.blocksimulation(N_steps)
+
+        if 1:
+            from matplotlib import pyplot as plt
+            T = pbs.td.T
+            plt.plot(kk*T, bo[dtPT1_1], marker=".")
+            plt.plot(kk*T, bo[dtPT1_2], marker=".")
+            plt.plot(kk*T, bo[static_block], marker=".")
+            plt.grid()
+            plt.show()
+
+        # evaluate correct static calculation
+        self.assertGreater(bo[static_block][-1], 409)
+        self.assertLess(bo[static_block][-1], 410)
+
+        # now simulate again but with sympy_to_c
+        kk2, xx2, bo = pbs.td.blocksimulation(N_steps, rhs_options={"use_sp2c": True}, flexible_input_mode=True)
+
+        # compare lambdify-result and c-result
+        self.assertTrue(np.allclose(xx - xx2, 0))
+
+        # now redefine the input
+        u1_expr = pbs.td.td_step(pbs.td.k, u_step_time, u_amplitude) - 0.1*pbs.td.td_step(pbs.td.k, (u_step_time + 8)/T, u_amplitude)
+
+
 
     def test_block_05a__DirectionSensitiveSigmoid(self):
 

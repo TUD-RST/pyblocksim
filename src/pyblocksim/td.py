@@ -78,15 +78,23 @@ class DataStore:
         self.state_var_mapping = {}
         self.block_classes = {}
         self.block_instances = {}
-        self.numbered_symbols = sp.numbered_symbols("x", start=1)
+        self.numbered_state_symbols = sp.numbered_symbols("x", start=1)
+        self.numbered_input_symbols = sp.numbered_symbols("u", start=1)
 
         self.global_rhs_expr = None
+        self.global_input_expr_list = None
         self.all_state_vars = None
+        self.all_input_vars = None
         self.rhs_func = None
+        self.input_func = None
         self.state_history = None
 
     def get_state_vars(self, n) -> List[sp.Symbol]:
-        res = [next(self.numbered_symbols) for i in range(n)]
+        res = [next(self.numbered_state_symbols) for i in range(n)]
+        return res
+
+    def get_input_vars(self, m) -> List[sp.Symbol]:
+        res = [next(self.numbered_input_symbols) for i in range(m)]
         return res
 
     def register_block(self, block: "TDBlock"):
@@ -115,8 +123,9 @@ class TDBlock:
 
         if input1 is None:
             input1 = 0
-        self.u1, = self.input_expr_list = [input1]
+        self.input_expr_list = [input1]
 
+        # get more inputs (if provided)
         i = 1
         for key, value in kwargs.items():
             i += 1
@@ -125,6 +134,13 @@ class TDBlock:
             assert i == int(key.replace("input", ""))
             setattr(self, f"u{i}", value)
             self.input_expr_list.append(value)
+
+        self.n_inputs = len(self.input_expr_list)
+        self.input_vars = ds.get_input_vars(self.n_inputs)
+
+        # assign input vars to attributes of the block (like `self.u1``)
+        for i, var in enumerate(self.input_vars, start=1):
+            setattr(self, f"u{i}", var)
 
         if params is None:
             params = {}
@@ -966,7 +982,7 @@ class dtPropofolBolus(new_TDBlock(5 + 2*N_propofol_counters), CounterBlockMixin,
         self.bp_effect_dynamics_expr = self._generate_effect_dynamics_expr()
 
     def _generate_effect_dynamics_expr(self):
-        """
+        r"""
         Generate a piecewise defined polynomial like: _/‾‾\_ (amplitude 1)
         """
         Ta = 2
@@ -1099,12 +1115,14 @@ def limit(x, xmin=0, xmax=1, ymin=0, ymax=1):
     return sp.Piecewise((ymin, x < xmin), (new_x_expr, x < xmax), (ymax, True))
 
 
-def blocksimulation(k_end, rhs_options=None, iv=None):
+def blocksimulation(k_end, rhs_options=None, iv=None, flexible_input_mode=False):
     """
     :param k_end:       int; number of steps to simulate
     :param rhs_options: dict; passed to gen_global_rhs
     :param iv:          dict; initial values like {symbol: value, ..}
                         non-specified values are assumed to be 0
+    :param flexible_input_mode:
+                        bool; flag for new (experimental) input mode
 
     """
 
@@ -1128,7 +1146,8 @@ def blocksimulation(k_end, rhs_options=None, iv=None):
 
     kk_num = np.arange(k_end)
     for k_num in kk_num[:-1]:
-        current_state = rhs_func(k_num, *current_state)
+        new_input = ds.input_func(k_num, *current_state)
+        current_state = rhs_func(k_num, *current_state, *new_input)
         ds.state_history.append(current_state)
 
     ds.state_history = np.array(ds.state_history)
@@ -1147,6 +1166,7 @@ def gen_global_rhs(use_sp2c=False, use_existing_so=False, sp2c_cleanup=True):
 
     ds.global_rhs_expr = []
     ds.all_state_vars = []
+    ds.all_input_vars = []
 
     rplmts = [(t, k*T)]
 
@@ -1162,6 +1182,7 @@ def gen_global_rhs(use_sp2c=False, use_existing_so=False, sp2c_cleanup=True):
         rhs_expr = list(block_instance.rhs(k, state_vars))
 
         ds.all_state_vars.extend(state_vars)
+        ds.all_input_vars.extend(block_instance.input_vars)
 
         rhs_expr2 = []
         for elt in rhs_expr:
@@ -1179,7 +1200,7 @@ def gen_global_rhs(use_sp2c=False, use_existing_so=False, sp2c_cleanup=True):
 
     assert len(ds.global_rhs_expr) == len(ds.all_state_vars)
 
-    vars = [k, *ds.all_state_vars]
+    vars = [k, *ds.all_state_vars, *ds.all_input_vars]
     if use_sp2c:
         assert sp2c_cleanup in (True, False)
         import sympy_to_c as sp2c
@@ -1189,7 +1210,23 @@ def gen_global_rhs(use_sp2c=False, use_existing_so=False, sp2c_cleanup=True):
     else:
         ds.rhs_func = st.expr_to_func(vars, ds.global_rhs_expr, modules="numpy", eltw_vectorize=False)
 
+    generate_input_func()
+
     return ds.rhs_func
+
+
+def generate_input_func():
+
+    ds.global_input_expr_list = []
+    for block_name, _ in ds.state_var_mapping.items():
+        block_instance: TDBlock = ds.block_instances[block_name]
+
+        ds.global_input_expr_list.extend(block_instance.input_expr_list)
+
+    # some inputs might depend on state components (e.g. for concatenated blocks)
+    vars = [k, *ds.all_state_vars]
+
+    ds.input_func = st.expr_to_func(vars, ds.global_input_expr_list, modules="numpy", eltw_vectorize=False)
 
 
 def td_step(k, k_step, value1=1, value0=0):
