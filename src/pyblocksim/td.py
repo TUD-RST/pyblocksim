@@ -621,7 +621,7 @@ class MaxBlockMixin:
                 v2 = fmax(b, c);
                 return fmax(v1, v2)
             }
-        """).substitute(down_slope=self.down_slope)
+        """).substitute()
 
         self._implemented_functions["max3_func"] = max3_func
         return max3_func
@@ -932,23 +932,26 @@ dtAcrinor = dtAkrinor
 
 
 N_propofol_counters = 3
-class dtPropofolBolus(new_TDBlock(5 + N_propofol_counters), CounterBlockMixin, MaxBlockMixin):
+class dtPropofolBolus(new_TDBlock(5 + 2*N_propofol_counters), CounterBlockMixin, MaxBlockMixin):
     """
     This block models blood pressure increase due to Propofol bolus doses.
-    # It uses 1state counters
+    It uses 1state counters. Each counter, is followed by an associated amplitude value.
+    (also considered part of the counter state components ("counter states"))
+
     """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.non_counter_states = self.state_vars[:len(self.state_vars)-N_propofol_counters]
-        self.counter_states = self.state_vars[len(self.state_vars)-N_propofol_counters:]
+        self.non_counter_states = self.state_vars[:len(self.state_vars)-2*N_propofol_counters]
+        self.counter_states = self.state_vars[len(self.state_vars)-2*N_propofol_counters:]
 
         self.n_counters = N_propofol_counters
 
-        # reduce counters by 1 in each step
-        self.down_slope = -1
-        self.T_plateau = 6
+        # effect counter (8) is longer then original sensitivity counter (6)
+        # but this does not matter as the sensitivity function is phased out at < 6
+        # anyway
+        self.T_counter = 8
 
         self.propofol_bolus_sensitivity_dynamics_np = st.expr_to_func(
             t, self.propofol_bolus_sensitivity_dynamics(t), modules="numpy"
@@ -958,6 +961,64 @@ class dtPropofolBolus(new_TDBlock(5 + N_propofol_counters), CounterBlockMixin, M
         self.propofol_bolus_static_values_np = st.expr_to_func(
             dose, self.propofol_bolus_static_values(dose), modules="numpy"
         )
+
+    def _define_amplitude_func(self):
+        """
+        rhs-helper function to calculate the amplitude of the drug effect.
+        """
+
+        cached_func = self._implemented_functions.get("amplitude_func")
+        if cached_func is not None:
+            return cached_func
+
+        # python implementation
+        def amplitude_func_imp(current_amplitude, u1, x2_sens, counter_index_state, i):
+            """
+            :param current_amplitude:
+            :param u1:              input
+            :param x2_sens:
+            :param counter_index_state:
+                                    int: index which counter should be activated next (was not active)
+                                    (allows to cycle through the counters)
+            :param i:               int; index which counter is currently considered in the counter-loop
+            """
+
+            if counter_index_state == i:
+                pass
+            else:
+                return current_amplitude
+
+
+        amplitude_func = implemented_function("amplitude_func", amplitude_func_imp)
+
+        # c implementation
+        amplitude_func.c_implementation = Template("""
+            double amplitude_func(double u1, ...) {
+                double result;
+                double down_slope = $down_slope;
+                if ((counter_index_state == i) && (initial_value > 0)) {
+                    // assign the initial value to the counter_state
+                    return initial_value;
+                }
+
+                // check if the counter (i) is currently running
+                if (counter_state > 0) {
+
+                    // counter is assumed to be counting down, thus down_slope is < 0
+                    result = counter_state + down_slope;
+                    if (result < 0) {
+                        result = 0;
+                    }
+                    return result;
+                }
+
+                // if the counter is not running, return 0
+                return 0;
+            }
+        """).substitute(down_slope=-1)
+
+        self._implemented_functions.get["amplitude_func"] = amplitude_func
+        return amplitude_func
 
     def rhs(self, k: int, state: List) -> List:
 
@@ -969,23 +1030,39 @@ class dtPropofolBolus(new_TDBlock(5 + N_propofol_counters), CounterBlockMixin, M
 
 
         # TODO: make this better parameterizable
-        counter_max_val = self.T_plateau/T
+        counter_max_val = self.T_counter/T
         counter_target_val = sp.Piecewise((counter_max_val, self.u1 > 0), (0, True))
 
         new_counter_states = [None]*len(self.counter_states)
         partial_sensitivities = [None]*self.n_counters
 
+        # amplitude_func = self._define_amplitude_func() # (self.u1, *self.counter_states)
+
+
+        # this is the amplitude which might in some situations be stored in the
+        # respective state component
+        new_amplitude = self.propofol_bolus_static_values(self.u1 * x2_sensitivity)
+
         # the counter-loop
+        # Explanation: For counter index i `self.counter_states[2*i]` is the counter value
+        # and `self.counter_states[2*i + 1]` is the associated amplitude value.
+        # The amplitude depends on current input (`self.u1`) and current sensitivity (`x2`)
         for i in range(self.n_counters):
 
             # counter_value for index i
-            counter_i = new_counter_states[i] = counter_func_1state(
-                self.counter_states[i], x4_counter_idx, i, counter_target_val
+            counter_i = new_counter_states[2*i] = counter_func_1state(
+                self.counter_states[2*i], x4_counter_idx, i, counter_target_val
             )
 
             counter_time = sp.Piecewise(((counter_max_val - counter_i)*T, counter_i > 0), (0, True))
             partial_sensitivities[i] = self.propofol_bolus_sensitivity_dynamics(counter_time)
-            # partial_sensitivities[i] = counter_time
+
+            # calculate the amplitude (`new_counter_states[2*i + 1]`)
+            current_amplitude = self.counter_states[2*i + 1]
+            current_counter = self.counter_states[2*i]
+            new_counter_states[2*i + 1] = sp.Piecewise(
+                (new_amplitude, i == x4_counter_idx), (0, current_counter == 0), (current_amplitude, True)
+            )
 
         # increase the counter index for every nonzero input, but start at 0 again
         # if all counters have been used
