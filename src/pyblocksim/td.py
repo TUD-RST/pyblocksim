@@ -632,7 +632,61 @@ class CounterBlockMixin:
         """
         This is for a 1-state counter (it is started in the rhs function) and just counts down
         """
-        pass
+
+        cached_func = self._implemented_functions.get("counter_func_2state")
+        if cached_func is not None:
+            return cached_func
+
+        def counter_func_1state_imp(counter_state, counter_index_state, i, initial_value):
+            """
+            :param counter_state:   float; current value of the counter
+            :param counter_index_state:
+                                    int: index which counter should be activated next (was not active)
+                                    (allows to cycle through the counters)
+            :param i:               int; index which counter is currently considered in the counter-loop
+            :param initial_value:   float; value with which the counter is initialized
+            """
+            # check if the counter-loop (i) is considering the counter which should be activated next
+            if counter_index_state == i and initial_value > 0:
+                # activate this counter
+
+                assert counter_state == 0
+                return initial_value
+            if counter_state > 0:
+                return counter_state - 1
+
+            return 0
+        # convert the python-function into a applicable sympy function
+        counter_func_1state = implemented_function("counter_func_1state", counter_func_1state_imp)
+
+        # the following is necessary for fast implementation
+        counter_func_1state.c_implementation = Template("""
+            double counter_func_1state(double counter_state, double counter_index_state, double i, double initial_value) {
+                double result;
+                double down_slope = $down_slope;
+                if ((counter_index_state == i) && (initial_value > 0)) {
+                    // assign the initial value to the counter_state
+                    return initial_value;
+                }
+
+                // check if the counter (i) is currently running
+                if (counter_state > 0) {
+
+                    // counter is assumed to be counting down, thus down_slope is < 0
+                    result = counter_state + down_slope;
+                    if (result < 0) {
+                        result = 0;
+                    }
+                    return result;
+                }
+
+                // if the counter is not running, return 0
+                return 0;
+            }
+        """).substitute(down_slope=-1)
+
+        self._implemented_functions["counter_func_1state"] = counter_func_1state
+        return counter_func_1state
 
     def _define_counter_func_2state(self):
         """
@@ -643,14 +697,13 @@ class CounterBlockMixin:
         if cached_func is not None:
             return cached_func
 
-
         def counter_func_2state_imp(counter_state, counter_k_start, k, counter_index_state, i, initial_value):
             """
             :param counter_state:   float; current value of the counter
             :param counter_k_start: int; time step index when this counter started
             :param k:               int; current time step index
             :param counter_index_state:
-                                    int: index which counter should be activated next
+                                    int: index which counter should be activated next (was not yet active)
                                     (allows to cycle through the counters)
             :param i:               int; index which counter is currently considered in the counter-loop
             :param initial_value:   float; value with which the counter is initialized
@@ -879,16 +932,17 @@ dtAcrinor = dtAkrinor
 
 
 N_propofol_counters = 3
-class dtPropofolBolus(new_TDBlock(5 + N_propofol_counters*2), CounterBlockMixin, MaxBlockMixin):
+class dtPropofolBolus(new_TDBlock(5 + N_propofol_counters), CounterBlockMixin, MaxBlockMixin):
     """
-    This block models blood pressure increase due to Propofol bolus doses
+    This block models blood pressure increase due to Propofol bolus doses.
+    # It uses 1state counters
     """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.non_counter_states = self.state_vars[:len(self.state_vars)-2*N_propofol_counters]
-        self.counter_states = self.state_vars[len(self.state_vars)-2*N_propofol_counters:]
+        self.non_counter_states = self.state_vars[:len(self.state_vars)-N_propofol_counters]
+        self.counter_states = self.state_vars[len(self.state_vars)-N_propofol_counters:]
 
         self.n_counters = N_propofol_counters
 
@@ -909,12 +963,9 @@ class dtPropofolBolus(new_TDBlock(5 + N_propofol_counters*2), CounterBlockMixin,
 
         x1_bp_effect, x2_sensitivity, x3, x4_counter_idx, x5_debug  = self.non_counter_states
 
+        # the counter should start immediately -> 1 state version
         # create/restore functions for handling the counters
-        counter_func_2state = self._define_counter_func_2state()
-
-        # the counter should start immediately
-        delta_k = 1
-        counter_start_func_2state = self._define_counter_start_func_2state(delta_k=delta_k)
+        counter_func_1state = self._define_counter_func_1state()
 
 
         # TODO: make this better parameterizable
@@ -928,13 +979,8 @@ class dtPropofolBolus(new_TDBlock(5 + N_propofol_counters*2), CounterBlockMixin,
         for i in range(self.n_counters):
 
             # counter_value for index i
-            counter_i = new_counter_states[2*i] = counter_func_2state(
-                self.counter_states[2*i], self.counter_states[2*i + 1], k, x4_counter_idx, i, counter_target_val
-            )
-
-            # k_start value for index i
-            new_counter_states[2*i + 1] = counter_start_func_2state(
-                self.counter_states[2*i + 1], k, x4_counter_idx, i, counter_target_val
+            counter_i = new_counter_states[i] = counter_func_1state(
+                self.counter_states[i], x4_counter_idx, i, counter_target_val
             )
 
             counter_time = sp.Piecewise(((counter_max_val - counter_i)*T, counter_i > 0), (0, True))
