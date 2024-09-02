@@ -49,6 +49,9 @@ def perform_sympy_monkey_patch_for__is_constant():
 
 perform_sympy_monkey_patch_for__is_constant()
 
+# abbreviation for the equality operator (needed in some Piecewise definitions)
+eq = sp.Equality
+
 
 # TODO: write unittest for this mechanism
 def get_loop_symbol():
@@ -962,64 +965,6 @@ class dtPropofolBolus(new_TDBlock(5 + 2*N_propofol_counters), CounterBlockMixin,
             dose, self.propofol_bolus_static_values(dose), modules="numpy"
         )
 
-    def _define_amplitude_func(self):
-        """
-        rhs-helper function to calculate the amplitude of the drug effect.
-        """
-
-        cached_func = self._implemented_functions.get("amplitude_func")
-        if cached_func is not None:
-            return cached_func
-
-        # python implementation
-        def amplitude_func_imp(current_amplitude, u1, x2_sens, counter_index_state, i):
-            """
-            :param current_amplitude:
-            :param u1:              input
-            :param x2_sens:
-            :param counter_index_state:
-                                    int: index which counter should be activated next (was not active)
-                                    (allows to cycle through the counters)
-            :param i:               int; index which counter is currently considered in the counter-loop
-            """
-
-            if counter_index_state == i:
-                pass
-            else:
-                return current_amplitude
-
-
-        amplitude_func = implemented_function("amplitude_func", amplitude_func_imp)
-
-        # c implementation
-        amplitude_func.c_implementation = Template("""
-            double amplitude_func(double u1, ...) {
-                double result;
-                double down_slope = $down_slope;
-                if ((counter_index_state == i) && (initial_value > 0)) {
-                    // assign the initial value to the counter_state
-                    return initial_value;
-                }
-
-                // check if the counter (i) is currently running
-                if (counter_state > 0) {
-
-                    // counter is assumed to be counting down, thus down_slope is < 0
-                    result = counter_state + down_slope;
-                    if (result < 0) {
-                        result = 0;
-                    }
-                    return result;
-                }
-
-                // if the counter is not running, return 0
-                return 0;
-            }
-        """).substitute(down_slope=-1)
-
-        self._implemented_functions.get["amplitude_func"] = amplitude_func
-        return amplitude_func
-
     def rhs(self, k: int, state: List) -> List:
 
         x1_bp_effect, x2_sensitivity, x3, x4_counter_idx, x5_debug  = self.non_counter_states
@@ -1038,15 +983,14 @@ class dtPropofolBolus(new_TDBlock(5 + 2*N_propofol_counters), CounterBlockMixin,
 
         # amplitude_func = self._define_amplitude_func() # (self.u1, *self.counter_states)
 
-
-        # this is the amplitude which might in some situations be stored in the
-        # respective state component
-        new_amplitude = self.propofol_bolus_static_values(self.u1 * x2_sensitivity)
-
         # the counter-loop
         # Explanation: For counter index i `self.counter_states[2*i]` is the counter value
         # and `self.counter_states[2*i + 1]` is the associated amplitude value.
         # The amplitude depends on current input (`self.u1`) and current sensitivity (`x2`)
+        new_amplitude = self.propofol_bolus_static_values(self.u1 * x2_sensitivity)
+
+        # it is mostly 0, except when there is a nonzero input
+
         for i in range(self.n_counters):
 
             # counter_value for index i
@@ -1061,11 +1005,12 @@ class dtPropofolBolus(new_TDBlock(5 + 2*N_propofol_counters), CounterBlockMixin,
             current_amplitude = self.counter_states[2*i + 1]
             current_counter = self.counter_states[2*i]
             new_counter_states[2*i + 1] = sp.Piecewise(
-                (new_amplitude, i == x4_counter_idx), (0, current_counter == 0), (current_amplitude, True)
+                # (new_amplitude, sp.Equality(i, x4_counter_idx)), (1, True)
+                (new_amplitude, eq(i, x4_counter_idx)), (0,  eq(current_counter, 0)), (current_amplitude, True)
             )
 
         # increase the counter index for every nonzero input, but start at 0 again
-        # if all counters have been used
+        # if all counters have been used (achieved by modulo (%))
         x4_counter_idx_new = (x4_counter_idx + sp.Piecewise((1, self.u1 > 0), (0, True))) % self.n_counters
 
         max3_func = self._define_max3_func()
