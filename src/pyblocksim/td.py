@@ -121,19 +121,7 @@ class TDBlock:
         self.output_fnc = None
         self.output_res = None
 
-        if input1 is None:
-            input1 = 0
-        self.input_expr_list = [input1]
-
-        # get more inputs (if provided)
-        i = 1
-        for key, value in kwargs.items():
-            i += 1
-            # assume key like input3
-            assert key.startswith("input")
-            assert i == int(key.replace("input", ""))
-            setattr(self, f"u{i}", value)
-            self.input_expr_list.append(value)
+        self.set_inputs(input1, **kwargs)
 
         self.n_inputs = len(self.input_expr_list)
         self.input_vars = ds.get_input_vars(self.n_inputs)
@@ -159,6 +147,36 @@ class TDBlock:
         self._implemented_functions = {}
 
         ds.register_block(self)
+
+    def set_inputs(self, input1, **kwargs):
+
+        if input1 is None:
+            input1 = sp.sympify(0)
+        rest_list = self._get_input_exprs_from_kwargs(kwargs)
+
+        # this might be called before the attribute is created
+        tmp_input_expr_list = getattr(self, "input_expr_list", None)
+        if tmp_input_expr_list is not None:
+            assert len(self.input_expr_list) == len(rest_list) + 1
+            assert len(self.input_vars) == len(rest_list) + 1
+
+        self.input_expr_list = [input1, *rest_list]
+
+    def _get_input_exprs_from_kwargs(self, kwargs: dict, set_attrs=False):
+
+        input_exprs = []
+        i = 1
+        for key, value in kwargs.items():
+            i += 1
+            # assume key like input3
+            assert key.startswith("input")
+            assert i == int(key.replace("input", ""))
+            if set_attrs:
+                # setattr(self, f"u{i}", value)
+                raise NotImplementedError("obsolete")
+            input_exprs.append(value)
+        return input_exprs
+
 
     def output(self):
         """
@@ -1115,14 +1133,12 @@ def limit(x, xmin=0, xmax=1, ymin=0, ymax=1):
     return sp.Piecewise((ymin, x < xmin), (new_x_expr, x < xmax), (ymax, True))
 
 
-def blocksimulation(k_end, rhs_options=None, iv=None, flexible_input_mode=False):
+def blocksimulation(k_end, rhs_options=None, iv=None):
     """
     :param k_end:       int; number of steps to simulate
     :param rhs_options: dict; passed to gen_global_rhs
     :param iv:          dict; initial values like {symbol: value, ..}
                         non-specified values are assumed to be 0
-    :param flexible_input_mode:
-                        bool; flag for new (experimental) input mode
 
     """
 
@@ -1132,8 +1148,13 @@ def blocksimulation(k_end, rhs_options=None, iv=None, flexible_input_mode=False)
     if iv is None:
         iv = {}
 
-    # generate equation system
-    rhs_func = gen_global_rhs(**rhs_options)
+    # generate equation system (if necessary)
+    if ds.rhs_func is None:
+        rhs_func = gen_global_rhs(**rhs_options)
+    else:
+        rhs_func = ds.rhs_func
+
+    # create initial state
     initial_state = [0]*len(ds.all_state_vars)
 
     for symbol, value in iv.items():
@@ -1150,6 +1171,7 @@ def blocksimulation(k_end, rhs_options=None, iv=None, flexible_input_mode=False)
         current_state = rhs_func(k_num, *current_state, *new_input)
         ds.state_history.append(current_state)
 
+    # postprocessing
     ds.state_history = np.array(ds.state_history)
 
     block_outputs = compute_block_outputs(kk_num, ds.state_history)
@@ -1217,11 +1239,17 @@ def gen_global_rhs(use_sp2c=False, use_existing_so=False, sp2c_cleanup=True):
 
 def generate_input_func():
 
+    rplmts = [(t, k*T)]
+
+    # handle feedback loops
+    rplmts.extend(loop_mappings.items())
+
     ds.global_input_expr_list = []
     for block_name, _ in ds.state_var_mapping.items():
         block_instance: TDBlock = ds.block_instances[block_name]
 
-        ds.global_input_expr_list.extend(block_instance.input_expr_list)
+        for expr in block_instance.input_expr_list:
+            ds.global_input_expr_list.append(sp.sympify(expr).subs(rplmts))
 
     # some inputs might depend on state components (e.g. for concatenated blocks)
     vars = [k, *ds.all_state_vars]

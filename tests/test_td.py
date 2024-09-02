@@ -117,7 +117,7 @@ class TestTD1(unittest.TestCase):
         # compare lambdify-result and c-result
         self.assertTrue(np.allclose(xx - xx2, 0))
 
-    def test_04a__flexible_input_mode(self):
+    def test_04a__modify_input_after_first_simulation(self):
         """
         Here we test a mode where the input function is evaluated separately.
         """
@@ -135,7 +135,7 @@ class TestTD1(unittest.TestCase):
         N_steps = int(20/T)
         kk, xx, bo = pbs.td.blocksimulation(N_steps)
 
-        if 1:
+        if 0:
             from matplotlib import pyplot as plt
             T = pbs.td.T
             plt.plot(kk*T, bo[dtPT1_1], marker=".")
@@ -149,7 +149,7 @@ class TestTD1(unittest.TestCase):
         self.assertLess(bo[static_block][-1], 410)
 
         # now simulate again but with sympy_to_c
-        kk2, xx2, bo = pbs.td.blocksimulation(N_steps, rhs_options={"use_sp2c": True}, flexible_input_mode=True)
+        kk2, xx2, bo = pbs.td.blocksimulation(N_steps, rhs_options={"use_sp2c": True})
 
         # compare lambdify-result and c-result
         self.assertTrue(np.allclose(xx - xx2, 0))
@@ -157,6 +157,24 @@ class TestTD1(unittest.TestCase):
         # now redefine the input
         u1_expr = pbs.td.td_step(pbs.td.k, u_step_time, u_amplitude) - 0.1*pbs.td.td_step(pbs.td.k, (u_step_time + 8)/T, u_amplitude)
 
+        dtPT1_1.set_inputs(input1=u1_expr)
+        pbs.td.generate_input_func()
+
+        # now simulate again but reuse rhs
+        kk2, xx2, bo = pbs.td.blocksimulation(N_steps, rhs_options={"use_sp2c": True})
+
+        if 0:
+            from matplotlib import pyplot as plt
+            T = pbs.td.T
+            plt.plot(kk*T, bo[dtPT1_1], marker=".")
+            plt.plot(kk*T, bo[dtPT1_2], marker=".")
+            plt.plot(kk*T, bo[static_block], marker=".")
+            plt.grid()
+            plt.show()
+
+        # with the new input the output goes down after 8s (80 steps)
+        self.assertGreater(bo[static_block][75], 405)
+        self.assertLess(bo[static_block][175], 334)
 
 
     def test_block_05a__DirectionSensitiveSigmoid(self):
