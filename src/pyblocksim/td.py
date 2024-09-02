@@ -628,14 +628,23 @@ class MaxBlockMixin:
 
 
 class CounterBlockMixin:
-    def _define_counter_func(self):
+    def _define_counter_func_1state(self):
+        """
+        This is for a 1-state counter (it is started in the rhs function) and just counts down
+        """
+        pass
 
-        cached_func = self._implemented_functions.get("counter_func")
+    def _define_counter_func_2state(self):
+        """
+        This is for a 2-state counter (which starts not now but in somewhere in the future)
+        """
+
+        cached_func = self._implemented_functions.get("counter_func_2state")
         if cached_func is not None:
             return cached_func
 
 
-        def counter_func_imp(counter_state, counter_k_start, k, counter_index_state, i, initial_value):
+        def counter_func_2state_imp(counter_state, counter_k_start, k, counter_index_state, i, initial_value):
             """
             :param counter_state:   float; current value of the counter
             :param counter_k_start: int; time step index when this counter started
@@ -669,11 +678,11 @@ class CounterBlockMixin:
             return counter_state
 
         # convert the python-function into a applicable sympy function
-        counter_func = implemented_function("counter_func", counter_func_imp)
+        counter_func_2state = implemented_function("counter_func_2state", counter_func_2state_imp)
 
         # the following is necessary for fast implementation
-        counter_func.c_implementation = Template("""
-            double counter_func(double counter_state, double counter_k_start, double k, double counter_index_state, double i, double initial_value) {
+        counter_func_2state.c_implementation = Template("""
+            double counter_func_2state(double counter_state, double counter_k_start, double k, double counter_index_state, double i, double initial_value) {
                 double result;
                 double down_slope = $down_slope;
                 if ((counter_index_state == i) && (initial_value > 0)) {
@@ -697,18 +706,18 @@ class CounterBlockMixin:
             }
         """).substitute(down_slope=self.down_slope)
 
-        self._implemented_functions["counter_func"] = counter_func
-        return counter_func
+        self._implemented_functions["counter_func_2state"] = counter_func_2state
+        return counter_func_2state
 
-    def _define_counter_start_func(self, delta_k):
+    def _define_counter_start_func_2state(self, delta_k):
         ":param delta_k: the amount of time_steps in the future when the counter will start"
 
-        cached_func = self._implemented_functions.get("counter_start_func")
+        cached_func = self._implemented_functions.get("counter_start_func_2state")
         if cached_func is not None:
             return cached_func
 
 
-        def counter_start_func_imp(counter_k_start, k, counter_index_state, i, initial_value):
+        def counter_start_func_2state_imp(counter_k_start, k, counter_index_state, i, initial_value):
             """
             :param counter_k_start: int; time step index when this counter started
             :param k:               int; current time step index
@@ -726,10 +735,10 @@ class CounterBlockMixin:
             # change nothing
             return counter_k_start
 
-        counter_start_func = implemented_function(f"counter_start_func", counter_start_func_imp)
-        counter_start_func.c_implementation = Template("""
+        counter_start_func_2state = implemented_function(f"counter_start_func_2state", counter_start_func_2state_imp)
+        counter_start_func_2state.c_implementation = Template("""
 
-            double counter_start_func(double counter_k_start, double k, double counter_index_state, double i, double initial_value) {
+            double counter_start_func_2state(double counter_k_start, double k, double counter_index_state, double i, double initial_value) {
                 double delta_k = $delta_k;
                 if ((counter_index_state == i) && (initial_value > 0)) {
                     // the counter k_start should be set
@@ -743,9 +752,9 @@ class CounterBlockMixin:
 
         """).substitute(delta_k=delta_k)
 
-        self._implemented_functions["counter_start_func"] = counter_start_func
+        self._implemented_functions["counter_start_func_2state"] = counter_start_func_2state
 
-        return counter_start_func
+        return counter_start_func_2state
 
 
 # This determines how many overlapping Akrinor bolus doses can be modelled
@@ -807,15 +816,15 @@ class dtAkrinor(new_TDBlock(5 + N_akrinor_counters*2), CounterBlockMixin):
             new_total_state := state_func(current_total_state)
         - if in time step k the input (`initial_value`) is non-zero the counter which is associated with
             counter_index_state gets prepared. More precisely two things happen (assuming c0 is the one):
-            - `counter_func` -> load initial value into self.counter_states[0]
-            - `counter_start_func` -> load the index into self.counter_states[1] at which the counter
+            - `counter_func_2state` -> load initial value into self.counter_states[0]
+            - `counter_start_func_2state` -> load the index into self.counter_states[1] at which the counter
                 actually will start to count down (after T_plateau is over)
         """
         # create/restore functions for handling the counters
-        counter_func = self._define_counter_func()
+        counter_func_2state = self._define_counter_func_2state()
 
         delta_k = int(self.T_plateau/T)
-        counter_start_func = self._define_counter_start_func(delta_k=delta_k)
+        counter_start_func_2state = self._define_counter_start_func_2state(delta_k=delta_k)
 
         # this acts as the integrator
         counter_sum = 0
@@ -825,14 +834,14 @@ class dtAkrinor(new_TDBlock(5 + N_akrinor_counters*2), CounterBlockMixin):
         for i in range(self.n_counters):
 
             # counter_value for index i
-            new_counter_states[2*i] = counter_func(
+            new_counter_states[2*i] = counter_func_2state(
                 self.counter_states[2*i], self.counter_states[2*i + 1], k, x4_counter_idx, i, absolute_map_increase
             )
 
             counter_sum += new_counter_states[2*i]
 
             # k_start value for index i
-            new_counter_states[2*i + 1] = counter_start_func(
+            new_counter_states[2*i + 1] = counter_start_func_2state(
                 self.counter_states[2*i + 1], k, x4_counter_idx, i, absolute_map_increase
             )
 
@@ -901,11 +910,11 @@ class dtPropofolBolus(new_TDBlock(5 + N_propofol_counters*2), CounterBlockMixin,
         x1_bp_effect, x2_sensitivity, x3, x4_counter_idx, x5_debug  = self.non_counter_states
 
         # create/restore functions for handling the counters
-        counter_func = self._define_counter_func()
+        counter_func_2state = self._define_counter_func_2state()
 
         # the counter should start immediately
         delta_k = 1
-        counter_start_func = self._define_counter_start_func(delta_k=delta_k)
+        counter_start_func_2state = self._define_counter_start_func_2state(delta_k=delta_k)
 
 
         # TODO: make this better parameterizable
@@ -919,12 +928,12 @@ class dtPropofolBolus(new_TDBlock(5 + N_propofol_counters*2), CounterBlockMixin,
         for i in range(self.n_counters):
 
             # counter_value for index i
-            counter_i = new_counter_states[2*i] = counter_func(
+            counter_i = new_counter_states[2*i] = counter_func_2state(
                 self.counter_states[2*i], self.counter_states[2*i + 1], k, x4_counter_idx, i, counter_target_val
             )
 
             # k_start value for index i
-            new_counter_states[2*i + 1] = counter_start_func(
+            new_counter_states[2*i + 1] = counter_start_func_2state(
                 self.counter_states[2*i + 1], k, x4_counter_idx, i, counter_target_val
             )
 
@@ -1014,10 +1023,11 @@ def blocksimulation(k_end, rhs_options=None):
     return kk_num, ds.state_history, block_outputs
 
 
-def gen_global_rhs(use_sp2c=False, use_existing_so=False):
+def gen_global_rhs(use_sp2c=False, use_existing_so=False, sp2c_cleanup=True):
     """
     :param use_sp2c:            bool; whether to use sympy_to_c (instead of lambdify)
     :param use_existing_so:     bool; whether to reuse shared object file if it exists
+    :param sp2c_cleanup:        bool; whether to delete auxiliary files for c-code generation
     """
 
     ds.global_rhs_expr = []
@@ -1056,7 +1066,9 @@ def gen_global_rhs(use_sp2c=False, use_existing_so=False):
 
     vars = [k, *ds.all_state_vars]
     if use_sp2c:
+        assert sp2c_cleanup in (True, False)
         import sympy_to_c as sp2c
+        sp2c.core.CLEANUP = sp2c_cleanup
 
         ds.rhs_func = sp2c.convert_to_c(vars, ds.global_rhs_expr, use_existing_so=use_existing_so)
     else:

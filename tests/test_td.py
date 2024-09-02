@@ -182,7 +182,8 @@ class TestTD1(unittest.TestCase):
         kk, xx, bo = pbs.td.blocksimulation(N_steps)
 
         # now simulate again but with sympy_to_c
-        kk2, xx2, bo = pbs.td.blocksimulation(N_steps, rhs_options={"use_sp2c": True})
+        # `cleanup = False` helps to debug the c-code generation
+        kk2, xx2, bo = pbs.td.blocksimulation(N_steps, rhs_options={"use_sp2c": True, "sp2c_cleanup": False})
 
         # compare lambdify-result and c-result
         self.assertTrue(np.allclose(xx - xx2, 0))
