@@ -1099,14 +1099,28 @@ def limit(x, xmin=0, xmax=1, ymin=0, ymax=1):
     return sp.Piecewise((ymin, x < xmin), (new_x_expr, x < xmax), (ymax, True))
 
 
-def blocksimulation(k_end, rhs_options=None):
+def blocksimulation(k_end, rhs_options=None, iv=None):
+    """
+    :param k_end:       int; number of steps to simulate
+    :param rhs_options: dict; passed to gen_global_rhs
+    :param iv:          dict; initial values like {symbol: value, ..}
+                        non-specified values are assumed to be 0
+
+    """
 
     if rhs_options is None:
         rhs_options = {}
 
+    if iv is None:
+        iv = {}
+
     # generate equation system
     rhs_func = gen_global_rhs(**rhs_options)
     initial_state = [0]*len(ds.all_state_vars)
+
+    for symbol, value in iv.items():
+        idx = ds.all_state_vars.index(symbol)
+        initial_state[idx] = value
 
     # solve equation system
     current_state = initial_state
