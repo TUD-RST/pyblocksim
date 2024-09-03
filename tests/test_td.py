@@ -323,7 +323,13 @@ class TestTD1(unittest.TestCase):
 
         u_expr_propofol_boli = sp.Piecewise((0.5, apx(t, 0)), (1.5, apx(t, 2)), (0, True))
         N_steps = int(T_end/T)
-        pfl = pbs.td.dtPropofolBolus(input1=u_expr_propofol_boli)
+
+        l1 = pbs.td.get_loop_symbol()
+        bp_sum  = pbs.td.StaticBlock(output_expr=100 + l1)
+        bp_delay_block = pbs.td.dtDelay1(input1=bp_sum.Y)
+
+        pfl = pbs.td.dtPropofolBolus(input1=u_expr_propofol_boli, input2=bp_delay_block.Y)
+        pbs.td.set_loop_symbol(l1, pfl.Y)
 
         # initial values
         iv = {pfl.x1: 100, pfl.x2: 1}

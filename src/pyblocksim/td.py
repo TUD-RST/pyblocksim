@@ -129,6 +129,7 @@ class TDBlock:
         # assign input vars to attributes of the block (like `self.u1``)
         for i, var in enumerate(self.input_vars, start=1):
             setattr(self, f"u{i}", var)
+        IPS()
 
         if params is None:
             params = {}
@@ -969,10 +970,13 @@ dtAcrinor = dtAkrinor
 
 
 N_propofol_counters = 3
-class dtPropofolBolus(new_TDBlock(5 + 2*N_propofol_counters), CounterBlockMixin, MaxBlockMixin):
+class dtPropofolBolus(new_TDBlock(5 + 3*N_propofol_counters), CounterBlockMixin, MaxBlockMixin):
     """
     This block models blood pressure increase due to Propofol bolus doses.
-    It uses 1state counters. Each counter, is followed by an associated amplitude value.
+    It uses 1state counters. Each counter, is followed by associated auxiliary values:
+    i + 0: counter
+    i + 1: effect amplitude considering sensitivity (used for BIS)
+    i + 2: effect amplitude without considering sensitivity (used for HR/BP)
     (also considered part of the counter state components ("counter states"))
 
     """
@@ -980,8 +984,8 @@ class dtPropofolBolus(new_TDBlock(5 + 2*N_propofol_counters), CounterBlockMixin,
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.non_counter_states = self.state_vars[:len(self.state_vars)-2*N_propofol_counters]
-        self.counter_states = self.state_vars[len(self.state_vars)-2*N_propofol_counters:]
+        self.non_counter_states = self.state_vars[:len(self.state_vars)-3*N_propofol_counters]
+        self.counter_states = self.state_vars[len(self.state_vars)-3*N_propofol_counters:]
 
         self.n_counters = N_propofol_counters
 
@@ -1034,6 +1038,7 @@ class dtPropofolBolus(new_TDBlock(5 + 2*N_propofol_counters), CounterBlockMixin,
 
         new_counter_states = [None]*len(self.counter_states)
         partial_sensitivities = [None]*self.n_counters
+        partial_bis_effects = [None]*self.n_counters
         partial_bp_effects = [None]*self.n_counters
 
         # amplitude_func = self._define_amplitude_func() # (self.u1, *self.counter_states)
@@ -1042,29 +1047,35 @@ class dtPropofolBolus(new_TDBlock(5 + 2*N_propofol_counters), CounterBlockMixin,
         # Explanation: For counter index i `self.counter_states[2*i]` is the counter value
         # and `self.counter_states[2*i + 1]` is the associated amplitude value.
         # The amplitude depends on current input (`self.u1`) and current sensitivity (`x2`)
-        new_amplitude = self.propofol_bolus_static_values(self.u1 * x2_sensitivity)
+        new_bis_amplitude = self.propofol_bolus_static_values(self.u1 * x2_sensitivity)*self.u2
+        new_bp_amplitude = self.propofol_bolus_static_values(self.u1)*self.u2 * 0.5
 
         # it is mostly 0, except when there is a nonzero input
 
         for i in range(self.n_counters):
 
             # counter_value for index i
-            counter_i = new_counter_states[2*i] = counter_func_1state(
-                self.counter_states[2*i], x4_counter_idx, i, counter_target_val
+            counter_i = new_counter_states[3*i] = counter_func_1state(
+                self.counter_states[3*i], x4_counter_idx, i, counter_target_val
             )
 
             counter_time = sp.Piecewise(((counter_max_val - counter_i)*T, counter_i > 0), (0, True))
             partial_sensitivities[i] = self.propofol_bolus_sensitivity_dynamics(counter_time)
 
             # calculate the amplitude (`new_counter_states[2*i + 1]`)
-            current_amplitude = self.counter_states[2*i + 1]
-            current_counter = self.counter_states[2*i]
-            new_counter_states[2*i + 1] = sp.Piecewise(
-                # (new_amplitude, sp.Equality(i, x4_counter_idx)), (1, True)
-                (new_amplitude, eq(i, x4_counter_idx)), (0,  eq(current_counter, 0)), (current_amplitude, True)
+            current_bis_amplitude = self.counter_states[3*i + 1]
+            current_bp_amplitude = self.counter_states[3*i + 2]
+            current_counter = self.counter_states[3*i]
+            new_counter_states[3*i + 1] = sp.Piecewise(
+                (new_bis_amplitude, eq(i, x4_counter_idx)), (0,  eq(current_counter, 0)), (current_bis_amplitude, True)
+            )
+            partial_bis_effects[i] = self._single_dose_effect_dynamics(counter_time, current_bis_amplitude)
+
+            new_counter_states[3*i + 2] = sp.Piecewise(
+                (new_bp_amplitude, eq(i, x4_counter_idx)), (0,  eq(current_counter, 0)), (current_bp_amplitude, True)
             )
 
-            partial_bp_effects[i] = self._single_dose_bp_effect(counter_time, current_amplitude)
+            partial_bp_effects[i] = self._single_dose_effect_dynamics(counter_time, current_bp_amplitude)
 
         # increase the counter index for every nonzero input, but start at 0 again
         # if all counters have been used (achieved by modulo (%))
@@ -1072,16 +1083,16 @@ class dtPropofolBolus(new_TDBlock(5 + 2*N_propofol_counters), CounterBlockMixin,
 
         max3_func = self._define_max3_func()
         assert self.n_counters == 3
-        x2_sensitivity_new = max3_func(*partial_sensitivities)
+        x2_bis_sensitivity_new = max3_func(*partial_sensitivities)
 
         # IPS()
         x1_bp_effect_new = 100 - 100*sum(partial_bp_effects)
 
-        new_state = [x1_bp_effect_new, x2_sensitivity_new, x3, x4_counter_idx_new, x5_debug] + new_counter_states
+        new_state = [x1_bp_effect_new, x2_bis_sensitivity_new, x3, x4_counter_idx_new, x5_debug] + new_counter_states
 
         return new_state
 
-    def _single_dose_bp_effect(self, counter_time, amplitude):
+    def _single_dose_effect_dynamics(self, counter_time, amplitude):
 
         res = self.bp_effect_dynamics_expr.subs(t, counter_time)*amplitude
         return res
