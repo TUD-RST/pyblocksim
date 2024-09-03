@@ -324,7 +324,13 @@ class TestTD1(unittest.TestCase):
         u_expr_propofol_boli = sp.Piecewise((0.5, apx(t, 0)), (1.5, apx(t, 2)), (0, True))
         N_steps = int(T_end/T)
         pfl = pbs.td.dtPropofolBolus(input1=u_expr_propofol_boli)
-        kk, xx, bo = pbs.td.blocksimulation(N_steps)
+
+        # initial values
+        iv = {pfl.x1: 100, pfl.x2: 1}
+        kk, xx, bo = pbs.td.blocksimulation(N_steps, iv=iv)
+
+        # again with sympy_to_c
+        kk, xx2, bo = pbs.td.blocksimulation(N_steps, iv=iv, rhs_options={"use_sp2c": True})
 
 
 # #################################################################################################

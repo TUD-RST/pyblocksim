@@ -656,7 +656,7 @@ class MaxBlockMixin:
                 double v1, v2;
                 v1 = fmax(a, b);
                 v2 = fmax(b, c);
-                return fmax(v1, v2)
+                return fmax(v1, v2);
             }
         """).substitute()
 
