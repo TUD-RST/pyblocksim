@@ -88,6 +88,7 @@ class DataStore:
         self.rhs_func = None
         self.input_func = None
         self.state_history = None
+        self.input_history = None
 
     def get_state_vars(self, n) -> List[sp.Symbol]:
         res = [next(self.numbered_state_symbols) for i in range(n)]
@@ -129,7 +130,6 @@ class TDBlock:
         # assign input vars to attributes of the block (like `self.u1``)
         for i, var in enumerate(self.input_vars, start=1):
             setattr(self, f"u{i}", var)
-        IPS()
 
         if params is None:
             params = {}
@@ -1011,14 +1011,16 @@ class dtPropofolBolus(new_TDBlock(5 + 3*N_propofol_counters), CounterBlockMixin,
         Tb = 4
         Tc = 6
 
+        static_value = -1
+
         # rising part
-        poly1 = st.condition_poly(t, (0, 0, 0, 0), (Ta, 1, 0, 0)) ##:
+        poly1 = st.condition_poly(t, (0, 0, 0, 0), (Ta, static_value, 0, 0)) ##:
 
         # falling part
-        poly2 = st.condition_poly(t, (Tb, 1, 0, 0), (Tc, 0, 0, 0)) ##:
+        poly2 = st.condition_poly(t, (Tb, static_value, 0, 0), (Tc, 0, 0, 0)) ##:
 
         effect_dynamics_expr = sp.Piecewise(
-            (0, t < 0), (poly1, t <= Ta), (1, t <= Tb), (poly2, t <= Tc), (0, True)
+            (0, t < 0), (poly1, t <= Ta), (static_value, t <= Tb), (poly2, t <= Tc), (0, True)
         )
         return effect_dynamics_expr
 
@@ -1086,9 +1088,10 @@ class dtPropofolBolus(new_TDBlock(5 + 3*N_propofol_counters), CounterBlockMixin,
         x2_bis_sensitivity_new = max3_func(*partial_sensitivities)
 
         # IPS()
-        x1_bp_effect_new = 100 - 100*sum(partial_bp_effects)
+        x1_bp_effect_new = sum(partial_bp_effects)
+        x5_debug_new = sum(partial_bp_effects)
 
-        new_state = [x1_bp_effect_new, x2_bis_sensitivity_new, x3, x4_counter_idx_new, x5_debug] + new_counter_states
+        new_state = [x1_bp_effect_new, x2_bis_sensitivity_new, x3, x4_counter_idx_new, x5_debug_new] + new_counter_states
 
         return new_state
 
@@ -1174,16 +1177,19 @@ def blocksimulation(k_end, rhs_options=None, iv=None):
 
     # solve equation system
     current_state = initial_state
-    ds.state_history = [current_state]
+    ds.state_history = []
+    ds.input_history = []
 
     kk_num = np.arange(k_end)
-    for k_num in kk_num[:-1]:
-        new_input = ds.input_func(k_num, *current_state)
-        current_state = rhs_func(k_num, *current_state, *new_input)
+    for k_num in kk_num:
         ds.state_history.append(current_state)
+        new_input = ds.input_func(k_num, *current_state)
+        ds.input_history.append(new_input)
+        current_state = rhs_func(k_num, *current_state, *new_input)
 
     # postprocessing
     ds.state_history = np.array(ds.state_history)
+    ds.input_history = np.array(ds.input_history)
 
     block_outputs = compute_block_outputs(kk_num, ds.state_history)
 
