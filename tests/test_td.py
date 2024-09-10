@@ -1,17 +1,18 @@
 import unittest
 import pyblocksim as pbs
+import symbtools as st
 import numpy as np
+import sympy as sp
 from matplotlib import pyplot as plt
 
-from ipydex import IPS
-
+from ipydex import Container, IPS, activate_ips_on_exception
 
 
 class TestTD1(unittest.TestCase):
     def setUp(self):
         pbs.restart()
 
-    def test_limit1(self):
+    def test_01__limit1(self):
 
         x = pbs.td.sp.Symbol("x")
         expr = pbs.td.limit(x, -3, 7, -1, 4)
@@ -31,7 +32,7 @@ class TestTD1(unittest.TestCase):
         self.assertEqual(fnc(7.1), 4)
 
 
-    def test_block_construction1(self):
+    def test_02__block_construction1(self):
 
         block_class = pbs.td.new_TDBlock(2)
         dtPT1_1 = pbs.td.dtPT1(params=dict(K=1, T1=1))
@@ -42,7 +43,7 @@ class TestTD1(unittest.TestCase):
 
         self.assertEqual(q.x2.name, "x4")
 
-    def test_block_simulation1(self):
+    def test_03a__block_simulation1(self):
         u_amplitude = 10
         u_step_time = 1
         T1 = 1
@@ -76,7 +77,14 @@ class TestTD1(unittest.TestCase):
         # evaluate 63% criterion
         self.assertAlmostEqual(xx[eval_k, 0], (1 - np.exp(-1))*u_amplitude)
 
-    def test_block_simulation2(self):
+        # now simulate again but with sympy_to_c
+        kk2, xx2, bo = pbs.td.blocksimulation(100, rhs_options={"use_sp2c": True})
+        self.assertAlmostEqual(xx2[eval_k, 0], (1 - np.exp(-1))*u_amplitude)
+
+        # compare lambdify-result and c-result
+        self.assertTrue(np.allclose(xx - xx2, 0))
+
+    def test_03b__block_simulation2(self):
         # now with static block
         u_amplitude = 10
         u_step_time = 1
@@ -86,7 +94,6 @@ class TestTD1(unittest.TestCase):
         dtPT1_2 = pbs.td.dtPT1(input1=dtPT1_1.Y, params=dict(K=2, T1=T1))
 
         static_block = pbs.td.StaticBlock(output_expr=dtPT1_1.Y + dtPT1_2.Y**2)
-
 
         kk, xx, bo = pbs.td.blocksimulation(100)
 
@@ -100,40 +107,71 @@ class TestTD1(unittest.TestCase):
             plt.grid()
             plt.show()
 
-        eval_k = int(u_step_time + T1/pbs.td.T)
+        # evaluate correct static calculation
+        self.assertGreater(bo[static_block][-1], 409)
+        self.assertLess(bo[static_block][-1], 410)
+
+        # now simulate again but with sympy_to_c
+        kk2, xx2, bo = pbs.td.blocksimulation(100, rhs_options={"use_sp2c": True})
+
+        # compare lambdify-result and c-result
+        self.assertTrue(np.allclose(xx - xx2, 0))
+
+    def test_04a__modify_input_after_first_simulation(self):
+        """
+        Here we test a mode where the input function is evaluated separately.
+        """
+        T = pbs.td.T
+        u_amplitude = 10
+        u_step_time = 1*T
+        T1 = 1
+        u1_expr = pbs.td.td_step(pbs.td.k, u_step_time/T, u_amplitude)
+
+        dtPT1_1 = pbs.td.dtPT1(input1=u1_expr, params=dict(K=1, T1=T1))
+        dtPT1_2 = pbs.td.dtPT1(input1=dtPT1_1.Y, params=dict(K=2, T1=T1))
+
+        static_block = pbs.td.StaticBlock(output_expr=dtPT1_1.Y + dtPT1_2.Y**2)
+
+        N_steps = int(20/T)
+        kk, xx, bo = pbs.td.blocksimulation(N_steps)
+
+        if 0:
+            from matplotlib import pyplot as plt
+            T = pbs.td.T
+            plt.plot(kk*T, bo[dtPT1_1], marker=".")
+            plt.plot(kk*T, bo[dtPT1_2], marker=".")
+            plt.plot(kk*T, bo[static_block], marker=".")
+            plt.grid()
+            plt.show()
 
         # evaluate correct static calculation
         self.assertGreater(bo[static_block][-1], 409)
         self.assertLess(bo[static_block][-1], 410)
 
+        # now simulate again but with sympy_to_c
+        kk2, xx2, bo = pbs.td.blocksimulation(N_steps, rhs_options={"use_sp2c": True})
 
-    def test_block_DirectionSensitiveSigmoid(self):
+        # compare lambdify-result and c-result
+        self.assertTrue(np.allclose(xx - xx2, 0))
 
-        T = pbs.td.T
-        k = pbs.td.k
-        T_trans_pos = 3
-        T_trans_neg = 5
-        u_amplitude = 20
+        # now redefine the input
+        u1_expr = pbs.td.td_step(pbs.td.k, u_step_time, u_amplitude) - 0.1*pbs.td.td_step(pbs.td.k, (u_step_time + 8)/T, u_amplitude)
 
-        step1 = 10
-        step2 = T_trans_pos/T + step1 + 25
+        dtPT1_1.set_inputs(input1=u1_expr)
+        pbs.td.generate_input_func()
 
-        u1_expr = pbs.sp.Piecewise((0, k < step1), (u_amplitude, k < step2), (0, True))
-
-        dss_1 = pbs.td.dtDirectionSensitiveSigmoid(
-            input1=u1_expr,
-            params=dict(K=1, T_trans_pos=T_trans_pos, T_trans_neg=T_trans_neg, sens=.1, f_wait_neg=0.3)
-        )
-
-        kk, xx, bo = pbs.td.blocksimulation(int(step2 + T_trans_neg/T)+10)
-
-        steps_start = np.r_[step1*T, step2*T]
-        steps_end = steps_start + np.r_[T_trans_pos, T_trans_neg]
+        # now simulate again but reuse rhs
+        kk2, xx2, bo = pbs.td.blocksimulation(N_steps, rhs_options={"use_sp2c": True})
 
         if 0:
-            plt.plot(kk*T, dss_1.output_res, marker=".")
-            plt.plot(kk*T, xx[:, 4], marker=".")
-            plt.vlines(steps_start, ymin=-1, ymax=u_amplitude, colors="tab:pink")
-            plt.vlines(steps_end, ymin=-1, ymax=u_amplitude, colors="k")
+            from matplotlib import pyplot as plt
+            T = pbs.td.T
+            plt.plot(kk*T, bo[dtPT1_1], marker=".")
+            plt.plot(kk*T, bo[dtPT1_2], marker=".")
+            plt.plot(kk*T, bo[static_block], marker=".")
             plt.grid()
             plt.show()
+
+        # with the new input the output goes down after 8s (80 steps)
+        self.assertGreater(bo[static_block][75], 405)
+        self.assertLess(bo[static_block][175], 334)

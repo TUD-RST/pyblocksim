@@ -5,11 +5,14 @@ This module contains a toolbox to construct, simulate and postprocess a graph of
 from typing import List
 import numpy as np
 import sympy as sp
+from sympy.utilities.lambdify import implemented_function
 
 import symbtools as st
 
 from ipydex import IPS
 
+# abbreviation for the equality operator (needed in some Piecewise definitions)
+eq = sp.Equality
 
 # discrete time
 
@@ -17,6 +20,47 @@ k = sp.Symbol("k")
 
 # this will be replaced by k*T in the final equations
 t = sp.Symbol("t")
+
+loop_symbol_iterator = sp.numbered_symbols("loop")
+loop_mappings = {}
+
+
+def perform_sympy_monkey_patch_for__is_constant():
+    """
+    This monkey patch is necessary for the following reason:
+    sp.lambdify calls a python printer. Deep down within the printer it must be determined
+    whether an expression is constant or not. Sympy does this by substituting some numbers
+    into the expression and looks for changes. However, we use implemented functions which
+    raise exceptions for some combinations of arguments, but we still want to lambdify them.
+
+    Solution replace the original .is_constant-method with a wrapper which handles our
+    special case.
+    """
+
+    if getattr(sp.Expr, "_orig_is_constant", None) is None:
+        sp.Expr._orig_is_constant = sp.Expr.is_constant
+
+    def new_is_constant(self, *args, **kwargs) -> bool:
+        for func_atoms in self.atoms(sp.core.function.AppliedUndef):
+            if func_atoms.atoms(sp.Symbol):
+                return False
+        return self._orig_is_constant(*args, **kwargs)
+
+    sp.Expr.is_constant = new_is_constant
+
+perform_sympy_monkey_patch_for__is_constant()
+
+
+# TODO: write unittest for this mechanism
+def get_loop_symbol():
+    ls = next(loop_symbol_iterator)
+    loop_mappings[ls] = None
+    return ls
+
+
+def set_loop_symbol(ls, expr):
+    assert loop_mappings[ls] is None
+    loop_mappings[ls] = expr
 
 
 class DataStore:
@@ -32,15 +76,24 @@ class DataStore:
         self.state_var_mapping = {}
         self.block_classes = {}
         self.block_instances = {}
-        self.numbered_symbols = sp.numbered_symbols("x", start=1)
+        self.numbered_state_symbols = sp.numbered_symbols("x", start=1)
+        self.numbered_input_symbols = sp.numbered_symbols("u", start=1)
 
         self.global_rhs_expr = None
+        self.global_input_expr_list = None
         self.all_state_vars = None
+        self.all_input_vars = None
         self.rhs_func = None
+        self.input_func = None
         self.state_history = None
+        self.input_history = None
 
     def get_state_vars(self, n) -> List[sp.Symbol]:
-        res = [next(self.numbered_symbols) for i in range(n)]
+        res = [next(self.numbered_state_symbols) for i in range(n)]
+        return res
+
+    def get_input_vars(self, m) -> List[sp.Symbol]:
+        res = [next(self.numbered_input_symbols) for i in range(m)]
         return res
 
     def register_block(self, block: "TDBlock"):
@@ -58,7 +111,7 @@ class TDBlock:
     n_states = None
     instance_counter: int = None
 
-    def __init__(self, name: str = None, input1=None, params=None):
+    def __init__(self, name: str = None, input1=None, params=None, **kwargs):
         # increment the correct class attribute
         type(self).instance_counter += 1
         self.state_vars = ds.get_state_vars(self.n_states)
@@ -67,11 +120,14 @@ class TDBlock:
         self.output_fnc = None
         self.output_res = None
 
-        if input1 is None:
-            input1 = 0
-        self.u1, = self.input_expr_list = [input1]
+        self.set_inputs(input1, **kwargs)
 
-        # TODO: support multiple scalar inputs
+        self.n_inputs = len(self.input_expr_list)
+        self.input_vars = ds.get_input_vars(self.n_inputs)
+
+        # assign input vars to attributes of the block (like `self.u1``)
+        for i, var in enumerate(self.input_vars, start=1):
+            setattr(self, f"u{i}", var)
 
         if params is None:
             params = {}
@@ -86,7 +142,40 @@ class TDBlock:
             name = f"{type(self).__name__}__{self.instance_counter}"
         self.name = name
 
+        # store implemented functions (e.g. for counter handling)
+        self._implemented_functions = {}
+
         ds.register_block(self)
+
+    def set_inputs(self, input1, **kwargs):
+
+        if input1 is None:
+            input1 = sp.sympify(0)
+        rest_list = self._get_input_exprs_from_kwargs(kwargs)
+
+        # this might be called before the attribute is created
+        tmp_input_expr_list = getattr(self, "input_expr_list", None)
+        if tmp_input_expr_list is not None:
+            assert len(self.input_expr_list) == len(rest_list) + 1
+            assert len(self.input_vars) == len(rest_list) + 1
+
+        self.input_expr_list = [input1, *rest_list]
+
+    def _get_input_exprs_from_kwargs(self, kwargs: dict, set_attrs=False):
+
+        input_exprs = []
+        i = 1
+        for key, value in kwargs.items():
+            i += 1
+            # assume key like input3
+            assert key.startswith("input")
+            assert i == int(key.replace("input", ""))
+            if set_attrs:
+                # setattr(self, f"u{i}", value)
+                raise NotImplementedError("obsolete")
+            input_exprs.append(value)
+        return input_exprs
+
 
     def output(self):
         """
@@ -145,6 +234,7 @@ class StaticBlock(TDBlock):
         return self.output_expr
 
 
+# discrete step time
 T = 0.1
 
 ####
@@ -279,91 +369,30 @@ class dtSigmoid(new_TDBlock(5)):
         return [x1_new, x2_new, x_cntr_new, x_u_storage_new, x_debug_new]
 
 
-class dtDirectionSensitiveSigmoid(new_TDBlock(5)):
-    """
-    This Sigmoid behaves differently for positive and negative input steps
-    """
+def tmp_eq_fnc(x4, i, res):
+    if x4 == i:
+        return res
+    else:
+        return 0
 
+# TODO: obsolete?
+eq_fnc = implemented_function(f"eq_fnc", tmp_eq_fnc)
+
+class dtDelay1(new_TDBlock(1)):
     def rhs(self, k: int, state: List) -> List:
+        x1, = self.state_vars
+        new_x1 = self.u1
+        return [new_x1]
 
-        assert "K" in self.params
-        assert "T_trans_pos" in self.params # overall counter time
-        assert "T_trans_neg" in self.params
-        assert "sens" in self.params
+    def output(self):
+        return self.x1
 
-        # fraction of overall counter time that is used for waiting
-        f_wait_pos = getattr(self, "f_wait_pos", 0)
-        f_wait_neg = getattr(self, "f_wait_neg", 0)
+def debug_func_imp(cond, *args, **kwargs):
+    print(args)
+    print(kwargs)
+    return 0
 
-        assert 0 <= f_wait_pos <= 1
-        assert 0 <= f_wait_neg <= 1
-
-        x1, x2, x_cntr, x_u_storage, x_debug  = self.state_vars
-        x_u_storage_new = self.u1
-
-        # determine a change of the input
-        input_change = sp.Piecewise((1, sp.Abs(self.u1 - x_u_storage) > self.sens), (0, True))
-
-        # counter
-        pos_delta_cntr = T/self.T_trans_pos
-        neg_delta_cntr = -T/self.T_trans_neg
-        x_cntr_new =  sp.Piecewise(
-            (pos_delta_cntr, self.u1 - x_u_storage > self.sens),
-            (neg_delta_cntr, self.u1 - x_u_storage < - self.sens),
-            # note that expressions like 0 < x < 1 are not possible for sympy symbols
-            (x_cntr + pos_delta_cntr, (0 < x_cntr) & (x_cntr<= 1)),
-            (x_cntr + neg_delta_cntr, (0 < -x_cntr) & (-x_cntr<= 1)),
-            (0, True),
-        )
-
-        # implement the waiting
-        # effective waiting fraction
-        f_wait = sp.Piecewise((f_wait_neg, x_cntr < 0), (f_wait_pos, x_cntr > 0), (0, True))
-
-        # effective counter (reaching the goal early by intention)
-        x_cntr_eff = limit(sp.Abs(x_cntr), xmin=f_wait, xmax=.95, ymin=0, ymax=1)*sign(x_cntr)
-
-        T_fast = 2*T
-
-        # this will reach 0 before |x_cntr_eff| will reach 1
-        # count_down = limit(1-1.2*sp.Abs(x_cntr_eff), xmin=0, xmax=1, ymin=0, ymax=1)
-        count_down = 1 - sp.Abs(x_cntr_eff)
-
-
-        T_trans = sp.Piecewise((self.T_trans_neg, x_cntr < 0), (self.T_trans_pos, x_cntr > 0), (0, True) )
-
-        T1 = T_fast + .6*self.T_trans_pos*(1+40*count_down**10)/12
-
-        p12 = 0.6
-
-        phase0 = sp.Piecewise((1, sp.Abs(x_cntr_eff) <= 1e-4), (0, True))
-        phase2 = limit(sp.Abs(x_cntr_eff), xmin=p12, xmax=1, ymin=0, ymax=1)*(1-phase0)
-        phase1 = (1 - phase2)*(1-phase0)
-
-
-        x_debug_new = x_cntr_eff#  phase0*10 + phase1
-        # x_debug_new = T1
-        # x_debug_new = self.u1 - x_u_storage
-
-        # PT2 Element based on Euler forward approximation
-        x1_new = sum((
-            x1,
-            (T*x2)*phase1,    # ordinary PT2 part
-            (T/T_fast*(self.K*self.u1 - x1))*phase2,  # fast PT1-convergence towards the stationary value
-        ))
-
-        # at the very end we want x1 == K*u1 (exactly)
-        x1_new = sp.Piecewise((x1_new, sp.Abs(x_cntr)<= 1), (self.K*self.u1, True))
-
-
-        # x2 should go to zero at the end of transition
-        x2_new = sum((
-            x2*phase1,
-            T*(1/(T1*T1)*(-(T1 + T1)*x2 - x1 + self.K*self.u1))*phase1,
-
-        ))
-
-        return [x1_new, x2_new, x_cntr_new, x_u_storage_new, x_debug_new]
+debug_func = implemented_function(f"debug_func", debug_func_imp)
 
 
 def limit(x, xmin=0, xmax=1, ymin=0, ymax=1):
@@ -377,34 +406,73 @@ def limit(x, xmin=0, xmax=1, ymin=0, ymax=1):
     return sp.Piecewise((ymin, x < xmin), (new_x_expr, x < xmax), (ymax, True))
 
 
-def blocksimulation(k_end):
+def blocksimulation(k_end, rhs_options=None, iv=None):
+    """
+    :param k_end:       int; number of steps to simulate
+    :param rhs_options: dict; passed to gen_global_rhs
+    :param iv:          dict; initial values like {symbol: value, ..}
+                        non-specified values are assumed to be 0
 
-    # generate equation system
-    rhs_func = gen_global_rhs()
+    """
+
+    if rhs_options is None:
+        rhs_options = {}
+
+    if iv is None:
+        iv = {}
+
+    # generate equation system (if necessary)
+    if ds.rhs_func is None:
+        rhs_func = gen_global_rhs(**rhs_options)
+    else:
+        rhs_func = ds.rhs_func
+
+    # create initial state
     initial_state = [0]*len(ds.all_state_vars)
+
+    for symbol, value in iv.items():
+        idx = ds.all_state_vars.index(symbol)
+        initial_state[idx] = value
 
     # solve equation system
     current_state = initial_state
-    ds.state_history = [current_state]
+    ds.state_history = []
+    ds.input_history = []
 
     kk_num = np.arange(k_end)
-    for k_num in kk_num[:-1]:
-        current_state = rhs_func(k_num, *current_state)
+    for k_num in kk_num:
         ds.state_history.append(current_state)
+        new_input = ds.input_func(k_num, *current_state)
+        ds.input_history.append(new_input)
+        current_state = rhs_func(k_num, *current_state, *new_input)
 
+    # postprocessing
     ds.state_history = np.array(ds.state_history)
+    ds.input_history = np.array(ds.input_history)
 
     block_outputs = compute_block_outputs(kk_num, ds.state_history)
 
     return kk_num, ds.state_history, block_outputs
 
 
-def gen_global_rhs():
+def gen_global_rhs(use_sp2c=False, use_existing_so=False, sp2c_cleanup=True):
+    """
+    :param use_sp2c:            bool; whether to use sympy_to_c (instead of lambdify)
+    :param use_existing_so:     bool; whether to reuse shared object file if it exists
+    :param sp2c_cleanup:        bool; whether to delete auxiliary files for c-code generation
+    """
 
     ds.global_rhs_expr = []
     ds.all_state_vars = []
+    ds.all_input_vars = []
 
     rplmts = [(t, k*T)]
+
+    # handle feedback loops
+    rplmts.extend(loop_mappings.items())
+
+    # check that none of the target expressions are None
+    assert None not in list(zip(*rplmts))[1]
 
     for block_name, state_vars in ds.state_var_mapping.items():
         block_instance: TDBlock = ds.block_instances[block_name]
@@ -412,6 +480,7 @@ def gen_global_rhs():
         rhs_expr = list(block_instance.rhs(k, state_vars))
 
         ds.all_state_vars.extend(state_vars)
+        ds.all_input_vars.extend(block_instance.input_vars)
 
         rhs_expr2 = []
         for elt in rhs_expr:
@@ -428,9 +497,40 @@ def gen_global_rhs():
             block_instance.output_expr = block_instance.output_expr.subs(rplmts)
 
     assert len(ds.global_rhs_expr) == len(ds.all_state_vars)
-    ds.rhs_func = st.expr_to_func([k, *ds.all_state_vars], ds.global_rhs_expr, modules="numpy")
+
+    vars = [k, *ds.all_state_vars, *ds.all_input_vars]
+    if use_sp2c:
+        assert sp2c_cleanup in (True, False)
+        import sympy_to_c as sp2c
+        sp2c.core.CLEANUP = sp2c_cleanup
+
+        ds.rhs_func = sp2c.convert_to_c(vars, ds.global_rhs_expr, use_existing_so=use_existing_so)
+    else:
+        ds.rhs_func = st.expr_to_func(vars, ds.global_rhs_expr, modules="numpy", eltw_vectorize=False)
+
+    generate_input_func()
 
     return ds.rhs_func
+
+
+def generate_input_func():
+
+    rplmts = [(t, k*T)]
+
+    # handle feedback loops
+    rplmts.extend(loop_mappings.items())
+
+    ds.global_input_expr_list = []
+    for block_name, _ in ds.state_var_mapping.items():
+        block_instance: TDBlock = ds.block_instances[block_name]
+
+        for expr in block_instance.input_expr_list:
+            ds.global_input_expr_list.append(sp.sympify(expr).subs(rplmts))
+
+    # some inputs might depend on state components (e.g. for concatenated blocks)
+    vars = [k, *ds.all_state_vars]
+
+    ds.input_func = st.expr_to_func(vars, ds.global_input_expr_list, modules="numpy", eltw_vectorize=False)
 
 
 def td_step(k, k_step, value1=1, value0=0):
