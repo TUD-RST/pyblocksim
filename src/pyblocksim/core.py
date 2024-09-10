@@ -9,7 +9,7 @@ from __future__ import print_function
 from six import string_types  # py2 and 3 compatibility
 from collections import OrderedDict
 
-from numpy.lib.index_tricks import r_
+from numpy import r_
 
 import numpy as np
 import scipy.integrate as integrate
