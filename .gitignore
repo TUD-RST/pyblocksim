@@ -8,3 +8,4 @@ testdata/*
 
 # sympy_to_c-generated files
 sp2c_lib.*
+dist/*
