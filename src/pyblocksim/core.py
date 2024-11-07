@@ -9,7 +9,7 @@ from __future__ import print_function
 from six import string_types  # py2 and 3 compatibility
 from collections import OrderedDict
 
-from numpy.lib.index_tricks import r_
+from numpy import r_
 
 import numpy as np
 import scipy.integrate as integrate
@@ -19,6 +19,8 @@ import sympy as sp
 
 import inspect
 import warnings
+
+from . import td
 
 # for debugging:
 try:
@@ -1077,6 +1079,9 @@ def restart():
     Forget about all blocks and states. This is useful for unittests
     """
     theStateAdmin.__init__()
+
+    # reset the time discrete module
+    td.ds.initialize()
 
 
 # global variables

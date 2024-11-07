@@ -2,3 +2,4 @@ sympy>=1.0
 scipy>=1.0
 ipydex>=0.1.2
 matplotlib  # needed to run the tests
+symbtools
