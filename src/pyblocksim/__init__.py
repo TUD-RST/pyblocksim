@@ -2,6 +2,13 @@
 intermediate module for convenient importing of all needed and useful objects
 """
 
+from .release import __version__
+
+# the package is imported during installation (to obtain the version)
+# however installation happens in an isolated build environment
+# where no dependencies are installed.
+
+
 try:
     # this might fail during installation (which is uncritical)
     from numpy import r_
@@ -38,8 +45,10 @@ try:
     # maintain backward compatibility after fixing typo
     compute_block_ouptputs = compute_block_outputs
 
-except ImportError as ex:
-    # this might be relevant during the installation process
-    print(ex)
-    raise
-from .release import __version__
+except ImportError:
+    import os
+    if "PIP_BUILD_TRACKER" in os.environ:
+        pass
+    else:
+        # raise the original exception
+        raise
