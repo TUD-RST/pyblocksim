@@ -62,6 +62,7 @@ def get_loop_symbol():
 
 
 def set_loop_symbol(ls, expr):
+    ensure_scalar(expr)
     assert loop_mappings[ls] is None
     loop_mappings[ls] = expr
 
@@ -163,6 +164,11 @@ class TDBlock:
             assert len(self.input_vars) == len(rest_list) + 1
 
         self.input_expr_list = [input1, *rest_list]
+        self._check_inputs()
+
+    def _check_inputs(self):
+        for expr in self.input_expr_list:
+            ensure_scalar(expr)
 
     def _get_input_exprs_from_kwargs(self, kwargs: dict, set_attrs=False):
 
@@ -557,3 +563,16 @@ def compute_block_outputs(kk, xx) -> dict:
         block.output_res = block_outputs[block] = block.output_fnc(kk, *xx.T)
 
     return block_outputs
+
+
+def ensure_scalar(expr):
+    expr = sp.sympify(expr)
+    if isinstance(expr, sp.MatrixBase):
+        # isinstance(expr, sp.Basic) might be also true -> ignore it here
+        msg = "Unexpectedly got matrix where scalar was expected."
+    elif isinstance(expr, sp.Basic):
+        # this is now OK
+        return
+    else:
+        msg = f"Unexpectedly got {type(expr)} where scalar was expected."
+    raise TypeError(msg)
