@@ -21,6 +21,9 @@ k = sp.Symbol("k")
 # this will be replaced by k*T in the final equations
 t = sp.Symbol("t")
 
+# discrete step time
+T = 0.1
+
 loop_symbol_iterator = sp.numbered_symbols("loop")
 loop_mappings = {}
 
@@ -234,10 +237,6 @@ class StaticBlock(TDBlock):
         return self.output_expr
 
 
-# discrete step time
-T = 0.1
-
-####
 class dtPT1(new_TDBlock(1)):
 
     def rhs(self, k: int, state: List) -> List:
@@ -406,7 +405,7 @@ def limit(x, xmin=0, xmax=1, ymin=0, ymax=1):
     return sp.Piecewise((ymin, x < xmin), (new_x_expr, x < xmax), (ymax, True))
 
 
-def blocksimulation(k_end, rhs_options=None, iv=None):
+def blocksimulation(k_end, rhs_options=None, iv=None, calc_outputs=True):
     """
     :param k_end:       int; number of steps to simulate
     :param rhs_options: dict; passed to gen_global_rhs
@@ -450,7 +449,10 @@ def blocksimulation(k_end, rhs_options=None, iv=None):
     ds.state_history = np.array(ds.state_history)
     ds.input_history = np.array(ds.input_history)
 
-    block_outputs = compute_block_outputs(kk_num, ds.state_history)
+    if calc_outputs:
+        block_outputs = compute_block_outputs(kk_num, ds.state_history)
+    else:
+        block_outputs = None
 
     return kk_num, ds.state_history, block_outputs
 
