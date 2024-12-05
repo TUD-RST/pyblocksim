@@ -133,10 +133,17 @@ class TDBlock:
         for i, var in enumerate(self.input_vars, start=1):
             setattr(self, f"u{i}", var)
 
-        if params is None:
-            params = {}
-        self.params = params
-        self.__dict__.update(params)
+        # params provided (hardcoded) by the class
+
+        self.params = self._class_specific_params()
+
+        # params provided by the constructor (can overwrite class parameters)
+        if params is not None:
+            assert isinstance(params, dict)
+            self.params.update(params)
+
+        # save them as attributes
+        self.__dict__.update(self.params)
 
         # make each state variable available as `self.x1`, `self.x2`, ...
         for i, x_i in enumerate(self.state_vars, start=1):
@@ -150,6 +157,13 @@ class TDBlock:
         self._implemented_functions = {}
 
         ds.register_block(self)
+
+    def _class_specific_params(self):
+        """
+        enables to specify parameters in subclasses
+        """
+        return {}
+
 
     def set_inputs(self, input1, **kwargs):
 
