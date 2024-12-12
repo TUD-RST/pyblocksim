@@ -112,12 +112,17 @@ ds = DataStore()
 
 
 class TDBlock:
+    max_blocks_of_this_type = float("inf")  # might be overwritten by by subclasses
     n_states = None
     instance_counter: int = None
 
     def __init__(self, name: str = None, input1=None, params=None, **kwargs):
         # increment the correct class attribute
         type(self).instance_counter += 1
+        if self.instance_counter > self.max_blocks_of_this_type:
+            msg = f"Cannot create another instance of '{type(self)}'. Max. instance number reached."
+            raise ValueError(msg)
+
         self.state_vars = ds.get_state_vars(self.n_states)
 
         # to calculate and store the output
