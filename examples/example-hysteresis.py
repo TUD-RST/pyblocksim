@@ -28,7 +28,7 @@ _tanh_factor = 1e3
 
 def step_factory(y0, y1, x_step):
     """
-    Factory to create continously approximated step functions
+    Factory to create continuously approximated step functions
     """
     # tanh maps R to (-1, 1)
 

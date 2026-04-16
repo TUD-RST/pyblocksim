@@ -41,6 +41,7 @@ try:
         restart,
     )
     from . import td
+    from . import utils
 
     # maintain backward compatibility after fixing typo
     compute_block_ouptputs = compute_block_outputs
